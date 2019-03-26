@@ -13,12 +13,14 @@ import (
 // RunCommand contains the config and methods for the Run command.
 type RunCommand struct {
 	Config string `help:"Specify the path to the config file."`
+	Workers int `help:"Specify the number of works to run."`
 }
 
 // NewRunCommand created a new instance of the RunCommand ready to use.
 func NewRunCommand() *RunCommand {
 	return &RunCommand{
 		Config: "./config.yaml",
+		Workers: 1,
 	}
 }
 
@@ -33,7 +35,7 @@ func (c *RunCommand) Run() error {
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(conf.Workers)
+	logBroker := broker.NewBroker(c.Workers)
 
 	err = c.startProcesses(conf, sourceManager, targetManager, logBroker)
 

@@ -14,8 +14,6 @@ func TestNewConfig(t *testing.T) {
 
 func TestLoadYAML(t *testing.T) {
 	var data = `
-workers: 1
-
 sources:
   my_source:
     provider: some_provider
@@ -101,8 +99,6 @@ alerting:
 
 func TestValidateIsSuccessful(t *testing.T) {
 	var data = `
-workers: 1
-
 sources:
   my_source:
     provider: some_provider
@@ -155,8 +151,6 @@ alerting:
 
 func TestValidateIsFailure(t *testing.T) {
 	var data = `
-workers: 1
-
 sources:
   test:
     provider: lll@

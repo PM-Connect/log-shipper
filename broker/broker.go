@@ -230,7 +230,7 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 				panic(err)
 			}
 		case <-b.TargetStop:
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 	}
@@ -259,8 +259,8 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 	go protocol.ReadToChannel(conn, receiveChan, errorChan)
 
 	defer func() {
-		protocol.WriteNewMessage(conn, protocol.CommandBye, "")
-		conn.Close()
+		_, _ =protocol.WriteNewMessage(conn, protocol.CommandBye, "")
+		_ = conn.Close()
 	}()
 
 	for {
@@ -300,7 +300,7 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 				panic(err)
 			}
 		case <-b.SourceStop:
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 	}

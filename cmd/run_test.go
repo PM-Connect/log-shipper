@@ -14,10 +14,8 @@ import (
 	"testing"
 )
 
-func TestRunStartsSourcesAndTargets(t *testing.T) {
+func TestRunWithSingleSourceAndSingleTarget(t *testing.T) {
 	var data = `
-workers: 1
-
 sources:
   testSource:
     provider: test
@@ -39,14 +37,14 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(c.Workers)
+	logBroker := broker.NewBroker(runCommand.Workers)
 
 	var wg sync.WaitGroup
 
 	wg.Add(2)
 
-	testSource := TestSource{WaitGroup: &wg}
-	testTarget := TestTarget{WaitGroup: &wg}
+	testSource := TestSource{}
+	testTarget := TestTarget{}
 
 	sourceManager.AddConnection("testSource", &testSource)
 	targetManager.AddConnection("testTarget", &testTarget)
@@ -78,13 +76,246 @@ targets:
 	}
 }
 
+func TestRunWithMultipleSourcesAndSingleTarget(t *testing.T) {
+	var data = `
+sources:
+  testSource1:
+    provider: test
+    targets:
+      - testTarget
+  testSource2:
+    provider: test
+    targets:
+      - testTarget
+
+targets:
+  testTarget:
+    provider: test
+`
+	c := config.NewConfig()
+
+	err := c.LoadYAML(data)
+
+	assert.Nil(t, err)
+
+	runCommand := NewRunCommand()
+
+	sourceManager := connection.NewManager()
+	targetManager := connection.NewManager()
+
+	logBroker := broker.NewBroker(runCommand.Workers)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	testSource1 := TestSource{}
+	testSource2 := TestSource{}
+	testTarget := TestTarget{}
+
+	sourceManager.AddConnection("testSource1", &testSource1)
+	sourceManager.AddConnection("testSource2", &testSource2)
+	targetManager.AddConnection("testTarget", &testTarget)
+
+	go func() {
+		for len(testTarget.ReceivedLogs) < 10 {}
+
+		logBroker.Stop()
+	}()
+
+	err = runCommand.startProcesses(c, sourceManager, targetManager, logBroker)
+
+	assert.Nil(t, err)
+
+	assert.NotEmpty(t, testTarget.ReceivedLogs)
+
+	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, len(testTarget.ReceivedLogs))
+	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ProcessedByWorker)
+	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget.ReceivedLogs))
+	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ReceivedFromSources)
+	assert.Equal(t, logBroker.SentToTargets, len(testTarget.ReceivedLogs))
+
+	for _, l := range testTarget.ReceivedLogs {
+		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "testTarget", l.Target)
+		assert.Equal(t, "Test", l.SourceLog.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+	}
+}
+
+func TestRunWithSingleSourceAndMultipleTargets(t *testing.T) {
+	var data = `
+sources:
+  testSource:
+    provider: test
+    targets:
+      - testTarget1
+      - testTarget2
+
+targets:
+  testTarget1:
+    provider: test
+  testTarget2:
+    provider: test
+`
+	c := config.NewConfig()
+
+	err := c.LoadYAML(data)
+
+	assert.Nil(t, err)
+
+	runCommand := NewRunCommand()
+
+	sourceManager := connection.NewManager()
+	targetManager := connection.NewManager()
+
+	logBroker := broker.NewBroker(runCommand.Workers)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	testSource := TestSource{}
+	testTarget1 := TestTarget{}
+	testTarget2 := TestTarget{}
+
+	sourceManager.AddConnection("testSource", &testSource)
+	targetManager.AddConnection("testTarget1", &testTarget1)
+	targetManager.AddConnection("testTarget2", &testTarget2)
+
+	go func() {
+		for testSource.SentLogs < 20 {}
+
+		logBroker.Stop()
+	}()
+
+	err = runCommand.startProcesses(c, sourceManager, targetManager, logBroker)
+
+	assert.Nil(t, err)
+
+	assert.NotEmpty(t, testTarget1.ReceivedLogs)
+	assert.NotEmpty(t, testTarget2.ReceivedLogs)
+
+	assert.Equal(t, testSource.SentLogs, len(testTarget1.ReceivedLogs))
+	assert.Equal(t, testSource.SentLogs, len(testTarget2.ReceivedLogs))
+
+	assert.Equal(t, testSource.SentLogs, logBroker.ProcessedByWorker)
+
+	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget1.ReceivedLogs))
+	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget2.ReceivedLogs))
+
+	assert.Equal(t, testSource.SentLogs, logBroker.ReceivedFromSources)
+
+	assert.Equal(t, logBroker.SentToTargets, len(testTarget1.ReceivedLogs) + len(testTarget2.ReceivedLogs))
+
+	for _, l := range testTarget1.ReceivedLogs {
+		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "testTarget1", l.Target)
+		assert.Equal(t, "testSource", l.Source)
+		assert.Equal(t, "Test", l.SourceLog.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+	}
+
+	for _, l := range testTarget2.ReceivedLogs {
+		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "testTarget2", l.Target)
+		assert.Equal(t, "testSource", l.Source)
+		assert.Equal(t, "Test", l.SourceLog.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+	}
+}
+
+func TestRunWithMultipleSourcesAndMultipleTargets(t *testing.T) {
+	var data = `
+sources:
+  testSource1:
+    provider: test
+    targets:
+      - testTarget1
+  testSource2:
+    provider: test
+    targets:
+      - testTarget2
+
+targets:
+  testTarget1:
+    provider: test
+  testTarget2:
+    provider: test
+`
+	c := config.NewConfig()
+
+	err := c.LoadYAML(data)
+
+	assert.Nil(t, err)
+
+	runCommand := NewRunCommand()
+
+	sourceManager := connection.NewManager()
+	targetManager := connection.NewManager()
+
+	logBroker := broker.NewBroker(runCommand.Workers)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	testSource1 := TestSource{}
+	testSource2 := TestSource{}
+	testTarget1 := TestTarget{}
+	testTarget2 := TestTarget{}
+
+	sourceManager.AddConnection("testSource1", &testSource1)
+	sourceManager.AddConnection("testSource2", &testSource2)
+	targetManager.AddConnection("testTarget1", &testTarget1)
+	targetManager.AddConnection("testTarget2", &testTarget2)
+
+	go func() {
+		for (testSource1.SentLogs + testSource2.SentLogs) < 20 {}
+
+		logBroker.Stop()
+	}()
+
+	err = runCommand.startProcesses(c, sourceManager, targetManager, logBroker)
+
+	assert.Nil(t, err)
+
+	assert.NotEmpty(t, testTarget1.ReceivedLogs)
+	assert.NotEmpty(t, testTarget2.ReceivedLogs)
+
+	assert.Equal(t, testSource1.SentLogs, len(testTarget1.ReceivedLogs))
+	assert.Equal(t, testSource2.SentLogs, len(testTarget2.ReceivedLogs))
+
+	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ProcessedByWorker)
+
+	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget1.ReceivedLogs) + len(testTarget2.ReceivedLogs))
+
+	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ReceivedFromSources)
+
+	assert.Equal(t, logBroker.SentToTargets, len(testTarget1.ReceivedLogs) + len(testTarget2.ReceivedLogs))
+
+	for _, l := range testTarget1.ReceivedLogs {
+		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "testTarget1", l.Target)
+		assert.Equal(t, "testSource1", l.Source)
+		assert.Equal(t, "Test", l.SourceLog.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+	}
+
+	for _, l := range testTarget2.ReceivedLogs {
+		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "testTarget2", l.Target)
+		assert.Equal(t, "testSource2", l.Source)
+		assert.Equal(t, "Test", l.SourceLog.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+	}
+}
+
 type TestSource struct {
 	SentLogs    int
-	WaitGroup *sync.WaitGroup
 }
 type TestTarget struct {
 	ReceivedLogs []*broker.TargetLog
-	WaitGroup *sync.WaitGroup
 }
 
 func (s *TestSource) Start() (*connection.Details, error) {
@@ -102,8 +333,6 @@ func (s *TestSource) Start() (*connection.Details, error) {
 	}
 
 	go func() {
-		defer s.WaitGroup.Done()
-
 		conn, err := ln.AcceptTCP()
 
 		if err != nil {
@@ -179,8 +408,6 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 	}
 
 	go func() {
-		defer t.WaitGroup.Done()
-
 		conn, err := ln.AcceptTCP()
 
 		if err != nil {
@@ -188,8 +415,8 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 		}
 
 		defer func() {
-			protocol.WriteNewMessage(conn, protocol.CommandBye, "")
-			conn.Close()
+			_, _ = protocol.WriteNewMessage(conn, protocol.CommandBye, "")
+			_ = conn.Close()
 		}()
 
 		_, err = protocol.WriteNewMessage(conn, protocol.CommandHello, "")
@@ -226,7 +453,7 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 				}
 			case err := <-errorChan:
 				if err != nil {
-					conn.Close()
+					_ = conn.Close()
 					return
 				}
 			}

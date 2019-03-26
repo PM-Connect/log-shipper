@@ -10,7 +10,6 @@ import (
 
 // Config contains setup of the log shipper.
 type Config struct {
-	Workers  int                     `yaml:"workers" validate:"required,min=1,max=10"`
 	Sources  map[string]Source       `yaml:"sources" validate:"required,min=1,dive,keys,alphadash,endkeys,dive"`
 	Targets  map[string]Target       `yaml:"targets" validate:"required,min=1,dive,keys,alphadash,endkeys,dive"`
 	Alerting map[string]AlertChannel `yaml:"alerting" validate:"required,min=1,dive,keys,alphadash,endkeys,dive"`
