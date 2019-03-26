@@ -100,6 +100,7 @@ func (b *Broker) Stop() {
 	b.WorkerWaitGroup.Wait()
 	close(b.TargetStop)
 	b.TargetWaitGroup.Wait()
+	b.GeneralWaitGroup.Wait()
 }
 
 func (b *Broker) connectToTargets(receiver chan []byte) *TargetChannels {

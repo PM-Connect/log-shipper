@@ -51,7 +51,7 @@ targets:
 	targetManager.AddConnection("testTarget", &testTarget)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -115,7 +115,7 @@ targets:
 	targetManager.AddConnection("testTarget", &testTarget)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -177,7 +177,7 @@ targets:
 	targetManager.AddConnection("testTarget2", &testTarget2)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -255,7 +255,7 @@ targets:
 	targetManager.AddConnection("testTarget2", &testTarget2)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
 
 		logBroker.Stop()
 	}()
