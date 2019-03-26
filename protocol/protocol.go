@@ -8,9 +8,11 @@ import (
 	"strings"
 )
 
+const CommandHello = "HELLO"
 const CommandOk = "OK"
 const CommandSourceLog = "SLOG"
 const CommandTargetLog = "TLOG"
+const CommandBye = "BYE"
 
 type Message struct {
 	Command string

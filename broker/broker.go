@@ -18,7 +18,13 @@ type Broker struct {
 	WorkerStop         chan interface{}
 	SourceStop         chan interface{}
 	TargetStop         chan interface{}
-	WaitGroup          *sync.WaitGroup
+	GeneralWaitGroup   *sync.WaitGroup
+	WorkerWaitGroup    *sync.WaitGroup
+	SourceWaitGroup    *sync.WaitGroup
+	TargetWaitGroup    *sync.WaitGroup
+	ProcessedByWorker int
+	ReceivedFromSources int
+	SentToTargets int
 }
 
 type Source struct {
@@ -60,7 +66,10 @@ func NewBroker(workers int) *Broker {
 	broker.SourceStop = make(chan interface{})
 	broker.TargetStop = make(chan interface{})
 	broker.NumWorkers = workers
-	broker.WaitGroup = &sync.WaitGroup{}
+	broker.GeneralWaitGroup = &sync.WaitGroup{}
+	broker.WorkerWaitGroup = &sync.WaitGroup{}
+	broker.SourceWaitGroup = &sync.WaitGroup{}
+	broker.TargetWaitGroup = &sync.WaitGroup{}
 
 	return &broker
 }
@@ -82,22 +91,26 @@ func (b *Broker) Start() error {
 
 	b.workSources(receiver, listeners)
 
-	b.WaitGroup.Wait()
+	b.GeneralWaitGroup.Wait()
 
 	return nil
 }
 
 func (b *Broker) Stop() {
 	close(b.SourceStop)
+	b.SourceWaitGroup.Wait()
 	close(b.WorkerStop)
+	b.WorkerWaitGroup.Wait()
 	close(b.TargetStop)
+	b.TargetWaitGroup.Wait()
 }
 
 func (b *Broker) connectToTargets(receiver chan []byte) *TargetChannels {
 	targetChannels := TargetChannels{}
 
 	for name, target := range b.Targets {
-		b.WaitGroup.Add(1)
+		b.TargetWaitGroup.Add(1)
+		b.GeneralWaitGroup.Add(1)
 		listen := make(chan []byte)
 		go b.openTargetConnection(name, target, listen, receiver)
 		targetChannels[name] = listen
@@ -108,20 +121,26 @@ func (b *Broker) connectToTargets(receiver chan []byte) *TargetChannels {
 
 func (b *Broker) connectToSources(receiver chan []byte) {
 	for name, source := range b.Sources {
+		b.SourceWaitGroup.Add(1)
 		go b.openSourceConnection(name, source, receiver)
 	}
 }
 
 func (b *Broker) workSources(receiver chan []byte, targets *TargetChannels) {
 	for i := 0; i < b.NumWorkers; i++ {
+		b.WorkerWaitGroup.Add(1)
 		go b.workReceiver(receiver, targets)
 	}
 }
 
 func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
+	defer b.WorkerWaitGroup.Done()
+
 	for {
 		select {
 		case data := <-receiver:
+			b.ProcessedByWorker++
+
 			log := Log{}
 
 			err := json.Unmarshal(data, &log)
@@ -145,7 +164,8 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 }
 
 func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan []byte, receiver chan<- []byte) {
-	defer b.WaitGroup.Done()
+	defer b.GeneralWaitGroup.Done()
+	defer b.TargetWaitGroup.Done()
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", target.ConnectionDetails.Host, target.ConnectionDetails.Port))
 	conn, err := net.DialTCP("tcp", nil, tcpAddr)
 
@@ -163,7 +183,7 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 		panic(err)
 	}
 
-	if message.Command != protocol.CommandOk {
+	if message.Command != protocol.CommandHello {
 		panic(fmt.Errorf("expected OK command from client, received %s", message.Command))
 	}
 
@@ -198,24 +218,26 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 				panic(err)
 			}
 
+			b.SentToTargets++
+
 			response, err := protocol.ReadMessage(conn)
 
-			if err != nil && err == io.EOF {
+			if err == nil && (response.Command != protocol.CommandOk && response.Command != protocol.CommandBye) {
+				panic(fmt.Errorf("expected OK command from client, received %s", response.Command))
+			} else if response.Command == protocol.CommandBye {
 				return
 			} else if err != nil {
 				panic(err)
 			}
-
-			if response.Command != protocol.CommandOk {
-				panic(fmt.Errorf("expected OK command from client, received %s", response.Command))
-			}
 		case <-b.TargetStop:
+			conn.Close()
 			return
 		}
 	}
 }
 
 func (b *Broker) openSourceConnection(name string, source *Source, receiver chan []byte) {
+	defer b.SourceWaitGroup.Done()
 	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", source.ConnectionDetails.Host, source.ConnectionDetails.Port))
 	conn, err := net.DialTCP("tcp", nil, tcpAddr)
 
@@ -223,9 +245,7 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 		panic(err)
 	}
 
-	defer conn.Close()
-
-	okMsg, err := protocol.WriteNewMessage(conn, protocol.CommandOk, "")
+	_, err = protocol.WriteNewMessage(conn, protocol.CommandHello, "")
 
 	if err != nil && err == io.EOF {
 		return
@@ -238,11 +258,17 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 
 	go protocol.ReadToChannel(conn, receiveChan, errorChan)
 
+	defer func() {
+		protocol.WriteNewMessage(conn, protocol.CommandBye, "")
+		conn.Close()
+	}()
+
 	for {
 		select {
 		case message := <-receiveChan:
 			switch message.Command {
 			case protocol.CommandSourceLog:
+				b.ReceivedFromSources++
 				sourceLog := SourceLog{}
 
 				err = json.Unmarshal([]byte(message.Data), &sourceLog)
@@ -263,15 +289,9 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 					panic(err)
 				}
 
+				_, _ = protocol.WriteNewMessage(conn, protocol.CommandOk, "")
+
 				receiver <- jsonData
-
-				err = protocol.WriteMessage(conn, okMsg)
-
-				if err != nil && err == io.EOF {
-					return
-				} else if err != nil {
-					panic(err)
-				}
 			}
 		case err := <-errorChan:
 			if err != nil && err == io.EOF {
@@ -280,6 +300,7 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 				panic(err)
 			}
 		case <-b.SourceStop:
+			conn.Close()
 			return
 		}
 	}

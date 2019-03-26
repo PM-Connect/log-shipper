@@ -3,18 +3,15 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/pm-connect/log-shipper/protocol"
-	"io"
-	"net"
-	"sync"
-	"testing"
-	"time"
-
 	"github.com/phayes/freeport"
 	"github.com/pm-connect/log-shipper/broker"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
+	"github.com/pm-connect/log-shipper/protocol"
 	"github.com/stretchr/testify/assert"
+	"net"
+	"sync"
+	"testing"
 )
 
 func TestRunStartsSourcesAndTargets(t *testing.T) {
@@ -55,7 +52,7 @@ targets:
 	targetManager.AddConnection("testTarget", &testTarget)
 
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		for testSource.SentLogs < 5 {}
 
 		logBroker.Stop()
 	}()
@@ -66,14 +63,11 @@ targets:
 
 	assert.NotEmpty(t, testTarget.ReceivedLogs)
 
-	testSource.Lock()
-	assert.Equal(t, len(testSource.SentLogs), len(testTarget.ReceivedLogs))
-
-	assert.Conditionf(t, func() (success bool) {
-		return len(testTarget.ReceivedLogs) >= len(testSource.SentLogs) - 1 && len(testTarget.ReceivedLogs) <= len(testSource.SentLogs) + 1
-	}, "Expected logs received by target to be within 1 of logs sent by source, got %d/%d", len(testTarget.ReceivedLogs), len(testSource.SentLogs))
-
-	testSource.Unlock()
+	assert.Equal(t, testSource.SentLogs, len(testTarget.ReceivedLogs))
+	assert.Equal(t, testSource.SentLogs, logBroker.ProcessedByWorker)
+	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget.ReceivedLogs))
+	assert.Equal(t, testSource.SentLogs, logBroker.ReceivedFromSources)
+	assert.Equal(t, logBroker.SentToTargets, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
 		assert.Equal(t, "1", l.SourceLog.ID)
@@ -85,8 +79,7 @@ targets:
 }
 
 type TestSource struct {
-	sync.Mutex
-	SentLogs    []*broker.SourceLog
+	SentLogs    int
 	WaitGroup *sync.WaitGroup
 }
 type TestTarget struct {
@@ -125,8 +118,8 @@ func (s *TestSource) Start() (*connection.Details, error) {
 			panic(err)
 		}
 
-		if message.Command != protocol.CommandOk {
-			panic(fmt.Errorf("expected OK command from client, received %s", message.Command))
+		if message.Command != protocol.CommandHello {
+			panic(fmt.Errorf("expected HELLO command from client, received %s", message.Command))
 		}
 
 		for {
@@ -150,21 +143,17 @@ func (s *TestSource) Start() (*connection.Details, error) {
 				panic(err)
 			}
 
-			s.Lock()
-			s.SentLogs = append(s.SentLogs, &log)
-			s.Unlock()
-
 			response, err := protocol.ReadMessage(conn)
 
-			if err != nil && err == io.EOF {
+			if err == nil && (response.Command != protocol.CommandOk && response.Command != protocol.CommandBye) {
+				panic(fmt.Errorf("expected OK command from client, received %s", response.Command))
+			} else if response.Command == protocol.CommandBye {
 				return
 			} else if err != nil {
-				panic(err)
+				return
 			}
 
-			if response.Command != protocol.CommandOk {
-				panic(fmt.Errorf("expected OK command from client, received %s", response.Command))
-			}
+			s.SentLogs++
 		}
 	}()
 
@@ -198,9 +187,12 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 			panic(err)
 		}
 
-		defer conn.Close()
+		defer func() {
+			protocol.WriteNewMessage(conn, protocol.CommandBye, "")
+			conn.Close()
+		}()
 
-		okMsg, err := protocol.WriteNewMessage(conn, protocol.CommandOk, "")
+		_, err = protocol.WriteNewMessage(conn, protocol.CommandHello, "")
 
 		if err != nil {
 			panic(err)
@@ -226,17 +218,16 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 
 					t.ReceivedLogs = append(t.ReceivedLogs, &log)
 
-					err = protocol.WriteMessage(conn, okMsg)
+					_, err := protocol.WriteNewMessage(conn, protocol.CommandOk, "")
 
 					if err != nil {
 						panic(err)
 					}
 				}
 			case err := <-errorChan:
-				if err != nil && err == io.EOF {
+				if err != nil {
+					conn.Close()
 					return
-				} else if err != nil {
-					panic(err)
 				}
 			}
 		}
