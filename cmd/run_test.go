@@ -12,6 +12,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestRunWithSingleSourceAndSingleTarget(t *testing.T) {
@@ -50,7 +51,7 @@ targets:
 	targetManager.AddConnection("testTarget", &testTarget)
 
 	go func() {
-		for testSource.SentLogs < 5 {}
+		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -62,10 +63,6 @@ targets:
 	assert.NotEmpty(t, testTarget.ReceivedLogs)
 
 	assert.Equal(t, testSource.SentLogs, len(testTarget.ReceivedLogs))
-	assert.Equal(t, testSource.SentLogs, logBroker.ProcessedByWorker)
-	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget.ReceivedLogs))
-	assert.Equal(t, testSource.SentLogs, logBroker.ReceivedFromSources)
-	assert.Equal(t, logBroker.SentToTargets, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
 		assert.Equal(t, "1", l.SourceLog.ID)
@@ -118,7 +115,7 @@ targets:
 	targetManager.AddConnection("testTarget", &testTarget)
 
 	go func() {
-		for len(testTarget.ReceivedLogs) < 10 {}
+		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -130,10 +127,6 @@ targets:
 	assert.NotEmpty(t, testTarget.ReceivedLogs)
 
 	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, len(testTarget.ReceivedLogs))
-	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ProcessedByWorker)
-	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget.ReceivedLogs))
-	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ReceivedFromSources)
-	assert.Equal(t, logBroker.SentToTargets, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
 		assert.Equal(t, "1", l.SourceLog.ID)
@@ -184,7 +177,7 @@ targets:
 	targetManager.AddConnection("testTarget2", &testTarget2)
 
 	go func() {
-		for testSource.SentLogs < 20 {}
+		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -198,15 +191,6 @@ targets:
 
 	assert.Equal(t, testSource.SentLogs, len(testTarget1.ReceivedLogs))
 	assert.Equal(t, testSource.SentLogs, len(testTarget2.ReceivedLogs))
-
-	assert.Equal(t, testSource.SentLogs, logBroker.ProcessedByWorker)
-
-	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget1.ReceivedLogs))
-	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget2.ReceivedLogs))
-
-	assert.Equal(t, testSource.SentLogs, logBroker.ReceivedFromSources)
-
-	assert.Equal(t, logBroker.SentToTargets, len(testTarget1.ReceivedLogs) + len(testTarget2.ReceivedLogs))
 
 	for _, l := range testTarget1.ReceivedLogs {
 		assert.Equal(t, "1", l.SourceLog.ID)
@@ -271,7 +255,7 @@ targets:
 	targetManager.AddConnection("testTarget2", &testTarget2)
 
 	go func() {
-		for (testSource1.SentLogs + testSource2.SentLogs) < 20 {}
+		time.Sleep(time.Until(time.Now().Add(2 * time.Second)))
 
 		logBroker.Stop()
 	}()
@@ -285,14 +269,6 @@ targets:
 
 	assert.Equal(t, testSource1.SentLogs, len(testTarget1.ReceivedLogs))
 	assert.Equal(t, testSource2.SentLogs, len(testTarget2.ReceivedLogs))
-
-	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ProcessedByWorker)
-
-	assert.Equal(t, logBroker.ProcessedByWorker, len(testTarget1.ReceivedLogs) + len(testTarget2.ReceivedLogs))
-
-	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, logBroker.ReceivedFromSources)
-
-	assert.Equal(t, logBroker.SentToTargets, len(testTarget1.ReceivedLogs) + len(testTarget2.ReceivedLogs))
 
 	for _, l := range testTarget1.ReceivedLogs {
 		assert.Equal(t, "1", l.SourceLog.ID)

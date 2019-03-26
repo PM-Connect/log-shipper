@@ -22,9 +22,6 @@ type Broker struct {
 	WorkerWaitGroup    *sync.WaitGroup
 	SourceWaitGroup    *sync.WaitGroup
 	TargetWaitGroup    *sync.WaitGroup
-	ProcessedByWorker int
-	ReceivedFromSources int
-	SentToTargets int
 }
 
 type Source struct {
@@ -139,8 +136,6 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 	for {
 		select {
 		case data := <-receiver:
-			b.ProcessedByWorker++
-
 			log := Log{}
 
 			err := json.Unmarshal(data, &log)
@@ -218,8 +213,6 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 				panic(err)
 			}
 
-			b.SentToTargets++
-
 			response, err := protocol.ReadMessage(conn)
 
 			if err == nil && (response.Command != protocol.CommandOk && response.Command != protocol.CommandBye) {
@@ -268,7 +261,6 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 		case message := <-receiveChan:
 			switch message.Command {
 			case protocol.CommandSourceLog:
-				b.ReceivedFromSources++
 				sourceLog := SourceLog{}
 
 				err = json.Unmarshal([]byte(message.Data), &sourceLog)
