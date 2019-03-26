@@ -1,0 +1,19 @@
+@startuml
+
+(Start) --> (Log Source Receivers) : Start workers
+(Start) --> (HTTP Servers) : Start servers
+(Start) --> (Metrics Collector) : Start collector processes
+(Start) -> (Alerting Service)
+
+(Log Source Receivers) --> (Log Item) : Receive a log item from a source
+(Log Source Receivers) =-> (Metrics Collector) : Send Metrics
+(Log Item) --> (Output Target)
+(Log Item) --> (Metrics Collector) : Send metrics
+(Log Item) --> (Check Rate Limiting)
+(Check Rate Limiting) --> (Metrics Collector) : Send metrics
+(Check Rate Limiting) ---> (Alerting Service) : Send Alerts
+(Output Target) -> (Metrics Collector) : Send metrics
+
+(HTTP Servers) <-- (Metrics Collector) : Publish metrics
+
+@enduml

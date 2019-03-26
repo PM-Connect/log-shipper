@@ -1,0 +1,50 @@
+@startuml
+
+:Fetch Input Sources;
+floating note left
+    See nomad_source_activity.puml
+    for source log collection flow example.
+    ====
+    Sources will push individual log items into a stream/channel
+    to be picked up here and sent to an output target.
+end note
+repeat :Loop through sources;
+    :Start log ingestion process;
+    fork
+        repeat :Receive log item from sources;
+            if (Is deduplication disabled or item not considered a dupe?) then (yes)
+                repeat :Loop through output targets;
+                    if (Rate limit for output reached?) then (yes)
+                        if (Has alerting channel?) then (yes)
+                            fork
+                                repeat :Loop through alerting channels;
+                                    if (Alerts recently sent?) then (no)
+                                        :Send rate limit alert;
+                                    endif
+                                repeat while (Has another alerting channel?) is (yes) not (no)
+                                detach
+                            end fork
+                        endif
+                        if (What is rate limit behaviour?) then (discard)
+                            :Discard log item;
+                        else (fallback)
+                            :Send log item to fallback output target;
+                        endif
+                    else (no)
+                        :Send log item to output target;
+                        fork
+                            :Process log item;
+                            :Send log item to storage method;
+                            detach
+                        end fork
+                    endif
+                repeat while (Has more output targets?) is (yes) not (no)
+            else
+                :Discard Item;
+            endif
+        repeat while (Wait for next log item)
+        detach
+    end fork
+repeat while (More sources available?) is (yes)
+
+@enduml

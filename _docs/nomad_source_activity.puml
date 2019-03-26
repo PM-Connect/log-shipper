@@ -1,0 +1,87 @@
+@startuml
+
+:Start Collection Process;
+fork
+    if (Running for specific node?) then (yes)
+        :Lock Node As Processing;
+        :Fetch Allocations For Node;
+        fork
+            :Refresh Node Lock;
+            detach
+        end fork
+        if (Failover Is Enabled?) then (yes)
+            repeat :Fetch Unlocked Node;
+                if (Node Is Not Locked For Failover?) then (yes)
+                    :Lock Node For Failover;
+                    fork
+                        if (Node Is Now Locked?) then (yes)
+                            :Cancel Running Allocation Receivers;
+                            :Drop Node Failover Lock;
+                        else
+                            :Fetch Node Allocations;
+                        endif
+                        detach
+                    fork again
+                        :Refresh Node Failover Lock;
+                        detach
+                    end fork
+                endif
+            repeat while (More Nodes?) is (yes) not (no)
+        endif
+    else
+        fork
+            :Fetch All Allocations;
+            detach
+        end fork
+    endif
+    repeat :Receive Allocation;
+        if (Allocation Is Locked?) then (yes)
+            :Skip Allocation;
+        else
+            :Lock Allocation;
+            fork
+                :Refresh Allocation Lock;
+                detach
+            end fork
+            :Determine Allocation Configuration;
+            :Fetch Tasks;
+            :Build Config For Tasks;
+            repeat :Loop Over Task Configs;
+                fork
+                    :Start stdout Collector;
+                    :Send Log Items To Output;
+                    detach
+                fork again
+                    :Start stderr Collector;
+                    :Send Log Items To Output;
+                    detach
+                end fork
+            repeat while (More configs available?) is ( yes)
+            repeat :Loop Over File Configs;
+                fork
+                    :Start File Collector;
+                    :Send Log Items To Output;
+                    detach
+                end fork
+            repeat while (More file configs available?) is (yes) not (no)
+        endif
+    repeat while (More allocations available?) is (yes) not (no)
+    detach
+end fork
+:Monitor Available Allocations;
+while (Allocations Available?)
+    if (Allocation running?) then (yes)
+        if (Allocation is not already collecting?) then (yes)
+            :Start Collector;
+        endif
+    else
+        if (Allocation is collecting?) then (yes)
+            :Stop Collector;
+        endif
+    endif
+endwhile
+
+:End Process;
+
+
+@enduml

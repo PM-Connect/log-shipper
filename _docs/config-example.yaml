@@ -1,0 +1,98 @@
+workers: 2 # Set the number of log workers to start.
+
+# Configure available log sources.
+sources:
+  external: # A friendly name for the source.
+    provider: external # Use the external provider. No config may be provided to an external service.
+    endpoint: localhost:1234 # Set the endpoint to open a stream to and receive logs from.
+    targets: # A list of targets to send logs to.
+      - logz.io
+  nomad: # A friendly name for the source.
+    provider: nomad # The name of the source provider to use.
+    targets: # A list of targets to send logs to.
+      - logz.io
+    config:
+      alloc_id: abc # The id of the current allocation running the shipper. (Avoid infinite recursive logging!)
+      node_id: xyz # The id of the nomad node to collect logs from. (If null, collect logs from all nodes.)
+
+# Configure possible targets to send logs to.
+targets:
+  external: # A friendly name for the target.
+    provider: external # Use the external provider.
+    endpoint: localhost:9876 # Set the endpoint to open a stream to and send logs to.
+    alert_channels: # A list of alert channels and the log levels they accept to send alerts to.
+        - devops_channel: ~ # Send all log levels.
+        - alerts_channel: ["ERROR", "CRITICAL"]
+    rate_limit: # A list of rate limiting thresholds.
+      - throughput: 20KB # The throughput according to the mode required to breach the limit.
+        mode: # Configure how the throughput is calculated. (eg, average throughput of 20KB per second, over the last 10 seconds)
+          type: average # The method of calculating the throughput
+          period: 1s # The period in which the type is calculating for.
+          duration: 10s # The duration of time to collect data for to calculate the throughput.
+          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+        breach_behaviour: # The action to take when in breach.
+          action: ~ # Do nothing
+          alert: WARN # Set the alerting config for when a breach is triggered.
+      - throughput: 30KB # The throughput according to the mode required to breach the limit.
+        mode: # Configure how the throughput is calculated. (eg, average throughput of 30KB per second, over the last 10 seconds)
+          type: average # The method of calculating the throughput
+          period: 1s # The period in which the type is calculating for.
+          duration: 10s # The duration of time to collect data for to calculate the throughput.
+          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+        breach_behaviour: # The action to take when in breach.
+          action: fallback # Fall back to the given target.
+          target: s3 # The target to send to. Logs will be sent here while in breach.
+          alert: ERROR # Set the alerting config for when a breach is triggered.
+  logz.io: # A friendly name for the target.
+    provider: logz.io # The name of the target provider to use.
+    alert_channels: # A list of alert channels and the log levels they accept to send alerts to.
+      - devops_channel: ~ # Send all log levels.
+      - alerts_channel: ["ERROR", "CRITICAL"]
+    rate_limit: # A list of rate limiting thresholds.
+      - throughput: 20KB # The throughput according to the mode required to breach the limit.
+        mode: # Configure how the throughput is calculated. (eg, average throughput of 20KB per second, over the last 10 seconds)
+          type: average # The method of calculating the throughput
+          period: 1s # The period in which the type is calculating for.
+          duration: 10s # The duration of time to collect data for to calculate the throughput.
+          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+        breach_behaviour: # The action to take when in breach.
+          action: ~ # Do nothing
+          alert: WARN # Set the alerting config for when a breach is triggered.
+      - throughput: 30KB # The throughput according to the mode required to breach the limit.
+        mode: # Configure how the throughput is calculated. (eg, average throughput of 30KB per second, over the last 10 seconds)
+          type: average # The method of calculating the throughput
+          period: 1s # The period in which the type is calculating for.
+          duration: 10s # The duration of time to collect data for to calculate the throughput.
+          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+        breach_behaviour: # The action to take when in breach.
+          action: fallback # Fall back to the given target.
+          target: s3 # The target to send to. Logs will be sent here while in breach.
+          alert: ERROR # Set the alerting config for when a breach is triggered.
+  s3: # A friendly name for the target.
+    provider: s3 # The name of the target provider to use.
+    alert_channels: # A list of alert channels and the log levels they accept to send alerts to.
+      - devops_channel: ~ # Send all log levels.
+      - alerts_channel: ["ERROR", "CRITICAL"]
+    rate_limit: # A list of rate limiting thresholds.
+      - throughput: 1000KB # The throughput according to the mode required to breach the limit.
+        mode: # Configure how the throughput is calculated. (eg, average throughput of 1000KB per second, over the last 10 seconds)
+          type: average # The method of calculating the throughput
+          period: 1s # The period in which the type is calculating for.
+          duration: 10s # The duration of time to collect data for to calculate the throughput.
+          per_source_identifier: false # Calculate throughput per target, or if true, per source identifier from the source.
+        breach_behaviour: # The action to take when in breach.
+          action: discard # Discard any received logs while in breach.
+          alert: CRITICAL # Set the alerting config for when a breach is triggered.
+
+# Configure any alerting channels.
+alerting:
+  devops_channel: # A friendly name for the channel.
+    provider: slack # The name of the alerting provider.
+    suppress: 5m # Suppress logs for this amount of time after a log is triggered.
+    config: # A key/value map of strings as config for the provider.
+      webhook: https://example.com/slack_webhook
+  alerts_channel: # A friendly name for the channel.
+    provider: slack # The name of the alerting provider.
+    suppress: 5m # Suppress logs for this amount of time after a log is triggered.
+    config: # A key/value map of strings as config for the provider.
+      webhook: https://example.com/slack_webhook2

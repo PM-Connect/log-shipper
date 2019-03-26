@@ -1,0 +1,37 @@
+@startuml
+
+frame nomad_cluster {
+    node nomad_client_1
+    node nomad_client_2
+    node nomad_client_3
+}
+
+frame log_shipper {
+    agent log_shipper_1
+    agent log_shipper_2
+    agent log_shipper_3
+}
+
+frame storage {
+    database logz.io
+    database s3
+}
+
+frame containers {
+    card docker_container_1
+    card docker_container_2
+}
+
+log_shipper <--> nomad_cluster : sync allocations
+
+nomad_cluster --> containers : collect stderr/stdout/files
+
+log_shipper_1 -- nomad_client_1 : stream logs
+log_shipper_2 -- nomad_client_2 : stream logs
+log_shipper_3 -- nomad_client_3 : stream logs
+
+log_shipper --> storage : store logs
+
+
+
+@enduml
