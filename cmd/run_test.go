@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func TestRunWithSingleSourceAndSingleTarget(t *testing.T) {
+func TestRunCommand_StartWithSingleSourceAndSingleTarget(t *testing.T) {
 	var data = `
 sources:
   testSource:
@@ -73,7 +73,7 @@ targets:
 	}
 }
 
-func TestRunWithMultipleSourcesAndSingleTarget(t *testing.T) {
+func TestRunCommand_StartMultipleSourcesAndSingleTarget(t *testing.T) {
 	var data = `
 sources:
   testSource1:
@@ -136,7 +136,7 @@ targets:
 	}
 }
 
-func TestRunWithSingleSourceAndMultipleTargets(t *testing.T) {
+func TestRunCommand_StartSingleSourceAndMultipleTargets(t *testing.T) {
 	var data = `
 sources:
   testSource:
@@ -209,7 +209,7 @@ targets:
 	}
 }
 
-func TestRunWithMultipleSourcesAndMultipleTargets(t *testing.T) {
+func TestRunCommand_StartMultipleSourcesAndMultipleTargets(t *testing.T) {
 	var data = `
 sources:
   testSource1:

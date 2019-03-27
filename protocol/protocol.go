@@ -17,7 +17,7 @@ const CommandBye = "BYE"
 // Message is the data of a full message for the protocol.
 type Message struct {
 	Command string
-	Data string
+	Data []byte
 }
 
 // ParseBytes parses a set of bytes into a message.
@@ -38,7 +38,7 @@ func ParseBytes(bytes []byte) (Message, error) {
 
 	return Message{
 		Command: messageParts[0],
-		Data: string(decoded),
+		Data: decoded,
 	}, nil
 }
 
@@ -74,7 +74,7 @@ func WriteMessage(conn io.Writer, message *Message) error {
 func WriteNewMessage(conn io.Writer, command string, data string) (*Message, error) {
 	message := Message{
 		Command: command,
-		Data: data,
+		Data: []byte(data),
 	}
 
 	return &message, WriteMessage(conn, &message)

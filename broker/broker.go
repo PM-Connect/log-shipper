@@ -122,16 +122,14 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 	for {
 		select {
 		case data := <-receiver:
-			log := message.BrokerMessage{}
-
-			err := json.Unmarshal(data, &log)
+			log, err := message.JsonToBroker(data)
 
 			if err != nil {
 				continue
 			}
 
 			targetChannels := *targets
-			for _, target := range log.Targets {
+			for _, target := range *log.Targets {
 				channel, ok := targetChannels[target]
 
 				if ok {
@@ -167,9 +165,7 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 	for {
 		select {
 		case data := <-listen:
-			log := message.BrokerMessage{}
-
-			err := json.Unmarshal(data, &log)
+			log, err := message.JsonToBroker(data)
 
 			if err != nil {
 				panic(err)
@@ -177,13 +173,9 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 
 			// Check Rate Limiting Here
 
-			targetLog := message.TargetMessage{
-				SourceMessage: log.SourceMessage,
-				Target:    name,
-				Source:    log.Source,
-			}
+			targetMessage := message.BrokerToTarget(name, log)
 
-			rawData, err := json.Marshal(targetLog)
+			rawData, err := json.Marshal(targetMessage)
 
 			if err != nil {
 				panic(err)
@@ -237,19 +229,13 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 		case msg := <-receiveChan:
 			switch msg.Command {
 			case protocol.CommandSourceMessage:
-				sourceMsg := message.SourceMessage{}
-
-				err = json.Unmarshal([]byte(msg.Data), &sourceMsg)
+				sourceMsg, err := message.JsonToSource(msg.Data)
 
 				if err != nil {
 					panic(err)
 				}
 
-				log := message.BrokerMessage{
-					SourceMessage: sourceMsg,
-					Source: name,
-					Targets: source.Targets,
-				}
+				log := message.SourceToBroker(name, &source.Targets, sourceMsg)
 
 				jsonData, err := json.Marshal(log)
 
