@@ -2,6 +2,7 @@ package connection
 
 import (
 	"fmt"
+	"net"
 )
 
 type Connection interface {
@@ -42,4 +43,16 @@ func (m *Manager) Start() (map[string]*Details, error) {
 	}
 
 	return details, nil
+}
+
+func OpenTCPConnection(host string, port int) (*net.TCPConn, error) {
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", host,port))
+	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+
+	return conn, err
+}
+
+func StartTCPServer(host string, port int) (*net.TCPListener, error) {
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", host, port))
+	return net.ListenTCP("tcp", tcpAddr)
 }

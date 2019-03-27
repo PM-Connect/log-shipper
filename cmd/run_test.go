@@ -7,9 +7,9 @@ import (
 	"github.com/pm-connect/log-shipper/broker"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
+	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
 	"github.com/stretchr/testify/assert"
-	"net"
 	"sync"
 	"testing"
 	"time"
@@ -65,11 +65,11 @@ targets:
 	assert.Equal(t, testSource.SentLogs, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "1", l.SourceMessage.ID)
 		assert.Equal(t, "testTarget", l.Target)
 		assert.Equal(t, "testSource", l.Source)
-		assert.Equal(t, "Test", l.SourceLog.Message)
-		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
 
@@ -129,10 +129,10 @@ targets:
 	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "1", l.SourceMessage.ID)
 		assert.Equal(t, "testTarget", l.Target)
-		assert.Equal(t, "Test", l.SourceLog.Message)
-		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
 
@@ -193,19 +193,19 @@ targets:
 	assert.Equal(t, testSource.SentLogs, len(testTarget2.ReceivedLogs))
 
 	for _, l := range testTarget1.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "1", l.SourceMessage.ID)
 		assert.Equal(t, "testTarget1", l.Target)
 		assert.Equal(t, "testSource", l.Source)
-		assert.Equal(t, "Test", l.SourceLog.Message)
-		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 
 	for _, l := range testTarget2.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "1", l.SourceMessage.ID)
 		assert.Equal(t, "testTarget2", l.Target)
 		assert.Equal(t, "testSource", l.Source)
-		assert.Equal(t, "Test", l.SourceLog.Message)
-		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
 
@@ -271,19 +271,19 @@ targets:
 	assert.Equal(t, testSource2.SentLogs, len(testTarget2.ReceivedLogs))
 
 	for _, l := range testTarget1.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "1", l.SourceMessage.ID)
 		assert.Equal(t, "testTarget1", l.Target)
 		assert.Equal(t, "testSource1", l.Source)
-		assert.Equal(t, "Test", l.SourceLog.Message)
-		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 
 	for _, l := range testTarget2.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceLog.ID)
+		assert.Equal(t, "1", l.SourceMessage.ID)
 		assert.Equal(t, "testTarget2", l.Target)
 		assert.Equal(t, "testSource2", l.Source)
-		assert.Equal(t, "Test", l.SourceLog.Message)
-		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceLog.Meta)
+		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
 
@@ -291,7 +291,7 @@ type TestSource struct {
 	SentLogs    int
 }
 type TestTarget struct {
-	ReceivedLogs []*broker.TargetLog
+	ReceivedLogs []*message.TargetMessage
 }
 
 func (s *TestSource) Start() (*connection.Details, error) {
@@ -301,8 +301,7 @@ func (s *TestSource) Start() (*connection.Details, error) {
 		panic(err)
 	}
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	ln, err := net.ListenTCP("tcp", tcpAddr)
+	ln, err := connection.StartTCPServer("127.0.0.1", port)
 
 	if err != nil {
 		panic(err)
@@ -317,18 +316,14 @@ func (s *TestSource) Start() (*connection.Details, error) {
 
 		defer conn.Close()
 
-		message, err := protocol.ReadMessage(conn)
+		ready := protocol.WaitForHello(conn)
 
-		if err != nil {
-			panic(err)
-		}
-
-		if message.Command != protocol.CommandHello {
-			panic(fmt.Errorf("expected HELLO command from client, received %s", message.Command))
+		if !ready {
+			panic(fmt.Errorf("failed to receive HELLO from broker"))
 		}
 
 		for {
-			log := broker.SourceLog{
+			log := message.SourceMessage{
 				ID:      "1",
 				Message: "Test",
 				Meta: map[string]string{
@@ -342,19 +337,15 @@ func (s *TestSource) Start() (*connection.Details, error) {
 				panic(err)
 			}
 
-			_, err = protocol.WriteNewMessage(conn, protocol.CommandSourceLog, string(data))
+			_, err = protocol.WriteNewMessage(conn, protocol.CommandSourceMessage, string(data))
 
 			if err != nil {
 				panic(err)
 			}
 
-			response, err := protocol.ReadMessage(conn)
+			ok := protocol.WaitForOk(conn)
 
-			if err == nil && (response.Command != protocol.CommandOk && response.Command != protocol.CommandBye) {
-				panic(fmt.Errorf("expected OK command from client, received %s", response.Command))
-			} else if response.Command == protocol.CommandBye {
-				return
-			} else if err != nil {
+			if !ok {
 				return
 			}
 
@@ -375,9 +366,7 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 		panic(err)
 	}
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-
-	ln, err := net.ListenTCP("tcp", tcpAddr)
+	ln, err := connection.StartTCPServer("127.0.0.1", port)
 
 	if err != nil {
 		panic(err)
@@ -395,10 +384,10 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 			_ = conn.Close()
 		}()
 
-		_, err = protocol.WriteNewMessage(conn, protocol.CommandHello, "")
+		ready := protocol.WaitForHello(conn)
 
-		if err != nil {
-			panic(err)
+		if !ready {
+			panic(fmt.Errorf("failed to receive HELLO from broker"))
 		}
 
 		receiveChan := make(chan *protocol.Message)
@@ -408,12 +397,12 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 
 		for {
 			select {
-			case message :=  <-receiveChan:
-				switch message.Command {
+			case msg := <-receiveChan:
+				switch msg.Command {
 				case protocol.CommandTargetLog:
-					log := broker.TargetLog{}
+					log := message.TargetMessage{}
 
-					err = json.Unmarshal([]byte(message.Data), &log)
+					err = json.Unmarshal([]byte(msg.Data), &log)
 
 					if err != nil {
 						panic(err)
@@ -421,11 +410,10 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 
 					t.ReceivedLogs = append(t.ReceivedLogs, &log)
 
-					_, err := protocol.WriteNewMessage(conn, protocol.CommandOk, "")
-
-					if err != nil {
-						panic(err)
-					}
+					protocol.SendOk(conn)
+				case protocol.CommandBye:
+					_ = conn.Close()
+					return
 				}
 			case err := <-errorChan:
 				if err != nil {

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
+	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
 	"io"
-	"net"
 	"sync"
 )
 
@@ -15,9 +15,13 @@ type Broker struct {
 	Sources            map[string]*Source
 	Targets            map[string]*Target
 	NumWorkers         int
+
+	// Channels to trigger the stop of workers/sources/targets.
 	WorkerStop         chan interface{}
 	SourceStop         chan interface{}
 	TargetStop         chan interface{}
+
+	// WaitGroups to ensure graceful halting of processes.
 	GeneralWaitGroup   *sync.WaitGroup
 	WorkerWaitGroup    *sync.WaitGroup
 	SourceWaitGroup    *sync.WaitGroup
@@ -32,24 +36,6 @@ type Source struct {
 type Target struct {
 	ConnectionDetails *connection.Details
 	Config            config.Target
-}
-
-type Log struct {
-	Source    string
-	SourceLog SourceLog
-	Targets   []string
-}
-
-type SourceLog struct {
-	ID      string
-	Message string
-	Meta    map[string]string
-}
-
-type TargetLog struct {
-	Target    string
-	SourceLog SourceLog
-	Source    string
 }
 
 type TargetChannels map[string]chan []byte
@@ -88,6 +74,11 @@ func (b *Broker) Start() error {
 
 	b.workSources(receiver, listeners)
 
+	b.SourceWaitGroup.Wait()
+	close(b.WorkerStop)
+	b.WorkerWaitGroup.Wait()
+	close(b.TargetStop)
+	b.TargetWaitGroup.Wait()
 	b.GeneralWaitGroup.Wait()
 
 	return nil
@@ -95,12 +86,6 @@ func (b *Broker) Start() error {
 
 func (b *Broker) Stop() {
 	close(b.SourceStop)
-	b.SourceWaitGroup.Wait()
-	close(b.WorkerStop)
-	b.WorkerWaitGroup.Wait()
-	close(b.TargetStop)
-	b.TargetWaitGroup.Wait()
-	b.GeneralWaitGroup.Wait()
 }
 
 func (b *Broker) connectToTargets(receiver chan []byte) *TargetChannels {
@@ -137,7 +122,7 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 	for {
 		select {
 		case data := <-receiver:
-			log := Log{}
+			log := message.BrokerMessage{}
 
 			err := json.Unmarshal(data, &log)
 
@@ -162,31 +147,27 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan []byte, receiver chan<- []byte) {
 	defer b.GeneralWaitGroup.Done()
 	defer b.TargetWaitGroup.Done()
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", target.ConnectionDetails.Host, target.ConnectionDetails.Port))
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+	conn, err := connection.OpenTCPConnection(target.ConnectionDetails.Host, target.ConnectionDetails.Port)
 
 	if err != nil {
 		panic(err)
 	}
 
-	defer conn.Close()
+	defer func() {
+		protocol.SendBye(conn)
+		_ = conn.Close()
+	}()
 
-	message, err := protocol.ReadMessage(conn)
+	ready := protocol.SendHello(conn)
 
-	if err != nil && err == io.EOF {
-		return
-	} else if err != nil {
-		panic(err)
-	}
-
-	if message.Command != protocol.CommandHello {
-		panic(fmt.Errorf("expected OK command from client, received %s", message.Command))
+	if !ready{
+		panic(fmt.Errorf("did not receive HELLO from server"))
 	}
 
 	for {
 		select {
 		case data := <-listen:
-			log := Log{}
+			log := message.BrokerMessage{}
 
 			err := json.Unmarshal(data, &log)
 
@@ -196,8 +177,8 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 
 			// Check Rate Limiting Here
 
-			targetLog := TargetLog{
-				SourceLog: log.SourceLog,
+			targetLog := message.TargetMessage{
+				SourceMessage: log.SourceMessage,
 				Target:    name,
 				Source:    log.Source,
 			}
@@ -214,16 +195,13 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 				panic(err)
 			}
 
-			response, err := protocol.ReadMessage(conn)
+			ok := protocol.WaitForOk(conn)
 
-			if err == nil && (response.Command != protocol.CommandOk && response.Command != protocol.CommandBye) {
-				panic(fmt.Errorf("expected OK command from client, received %s", response.Command))
-			} else if response.Command == protocol.CommandBye {
+			if !ok {
 				return
-			} else if err != nil {
-				panic(err)
 			}
 		case <-b.TargetStop:
+			protocol.SendBye(conn)
 			_ = conn.Close()
 			return
 		}
@@ -232,19 +210,16 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 
 func (b *Broker) openSourceConnection(name string, source *Source, receiver chan []byte) {
 	defer b.SourceWaitGroup.Done()
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", source.ConnectionDetails.Host, source.ConnectionDetails.Port))
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+	conn, err := connection.OpenTCPConnection(source.ConnectionDetails.Host, source.ConnectionDetails.Port)
 
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = protocol.WriteNewMessage(conn, protocol.CommandHello, "")
+	ready := protocol.SendHello(conn)
 
-	if err != nil && err == io.EOF {
-		return
-	} else if err != nil {
-		panic(err)
+	if !ready {
+		panic(fmt.Errorf("failed to send hello to source"))
 	}
 
 	receiveChan := make(chan *protocol.Message)
@@ -253,25 +228,25 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 	go protocol.ReadToChannel(conn, receiveChan, errorChan)
 
 	defer func() {
-		_, _ =protocol.WriteNewMessage(conn, protocol.CommandBye, "")
+		protocol.SendBye(conn)
 		_ = conn.Close()
 	}()
 
 	for {
 		select {
-		case message := <-receiveChan:
-			switch message.Command {
-			case protocol.CommandSourceLog:
-				sourceLog := SourceLog{}
+		case msg := <-receiveChan:
+			switch msg.Command {
+			case protocol.CommandSourceMessage:
+				sourceMsg := message.SourceMessage{}
 
-				err = json.Unmarshal([]byte(message.Data), &sourceLog)
+				err = json.Unmarshal([]byte(msg.Data), &sourceMsg)
 
 				if err != nil {
 					panic(err)
 				}
 
-				log := Log{
-					SourceLog: sourceLog,
+				log := message.BrokerMessage{
+					SourceMessage: sourceMsg,
 					Source: name,
 					Targets: source.Targets,
 				}
@@ -282,7 +257,7 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 					panic(err)
 				}
 
-				_, _ = protocol.WriteNewMessage(conn, protocol.CommandOk, "")
+				protocol.SendOk(conn)
 
 				receiver <- jsonData
 			}
