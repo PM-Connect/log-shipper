@@ -33,7 +33,7 @@ targets:
         mode:
           type: average
           period: 1s
-          duration: 10s
+          duration: 10
           per_source_identifier: false
         breach_behaviour:
           action: discard
@@ -74,10 +74,9 @@ alerting:
 		{
 			Throughput: "10KB",
 			Mode: RateLimitMode{
-				Type:                "average",
-				Period:              "1s",
-				Duration:            "10s",
-				PerSourceIdentifier: false,
+				Type:     "average",
+				Period:   "1s",
+				Duration: 10,
 			},
 			BreachBehaviour: BreachBehaviour{
 				Action:     "discard",
@@ -118,8 +117,7 @@ targets:
         mode:
           type: average
           period: 1s
-          duration: 10s
-          per_source_identifier: false
+          duration: 10
         breach_behaviour:
           action: discard
           alert: CRITICAL
@@ -170,7 +168,7 @@ targets:
         mode:
           type: average
           period: 1s
-          duration: 10s
+          duration: 10
           per_source_identifier: false
         breach_behaviour:
           action: discard

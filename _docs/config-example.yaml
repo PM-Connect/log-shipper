@@ -28,8 +28,7 @@ targets:
         mode: # Configure how the throughput is calculated. (eg, average throughput of 20KB per second, over the last 10 seconds)
           type: average # The method of calculating the throughput
           period: 1s # The period in which the type is calculating for.
-          duration: 10s # The duration of time to collect data for to calculate the throughput.
-          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+          duration: 10 # The duration of time to collect data for to calculate the throughput.
         breach_behaviour: # The action to take when in breach.
           action: ~ # Do nothing
           alert: WARN # Set the alerting config for when a breach is triggered.
@@ -37,8 +36,7 @@ targets:
         mode: # Configure how the throughput is calculated. (eg, average throughput of 30KB per second, over the last 10 seconds)
           type: average # The method of calculating the throughput
           period: 1s # The period in which the type is calculating for.
-          duration: 10s # The duration of time to collect data for to calculate the throughput.
-          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+          duration: 10 # The duration of time to collect data for to calculate the throughput.
         breach_behaviour: # The action to take when in breach.
           action: fallback # Fall back to the given target.
           target: s3 # The target to send to. Logs will be sent here while in breach.
@@ -53,8 +51,7 @@ targets:
         mode: # Configure how the throughput is calculated. (eg, average throughput of 20KB per second, over the last 10 seconds)
           type: average # The method of calculating the throughput
           period: 1s # The period in which the type is calculating for.
-          duration: 10s # The duration of time to collect data for to calculate the throughput.
-          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+          duration: 10 # The duration of time to collect data for to calculate the throughput.
         breach_behaviour: # The action to take when in breach.
           action: ~ # Do nothing
           alert: WARN # Set the alerting config for when a breach is triggered.
@@ -62,8 +59,7 @@ targets:
         mode: # Configure how the throughput is calculated. (eg, average throughput of 30KB per second, over the last 10 seconds)
           type: average # The method of calculating the throughput
           period: 1s # The period in which the type is calculating for.
-          duration: 10s # The duration of time to collect data for to calculate the throughput.
-          per_source_identifier: true # Calculate throughput per target, or if true, per source identifier from the source.
+          duration: 10 # The duration of time to collect data for to calculate the throughput.
         breach_behaviour: # The action to take when in breach.
           action: fallback # Fall back to the given target.
           target: s3 # The target to send to. Logs will be sent here while in breach.
@@ -78,7 +74,7 @@ targets:
         mode: # Configure how the throughput is calculated. (eg, average throughput of 1000KB per second, over the last 10 seconds)
           type: average # The method of calculating the throughput
           period: 1s # The period in which the type is calculating for.
-          duration: 10s # The duration of time to collect data for to calculate the throughput.
+          duration: 10 # The duration of time to collect data for to calculate the throughput.
           per_source_identifier: false # Calculate throughput per target, or if true, per source identifier from the source.
         breach_behaviour: # The action to take when in breach.
           action: discard # Discard any received logs while in breach.

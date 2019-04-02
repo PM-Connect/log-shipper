@@ -115,7 +115,7 @@ targets:
 	targetManager.AddConnection("testTarget", &testTarget)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(200 * time.Millisecond)))
 
 		logBroker.Stop()
 	}()
@@ -126,7 +126,7 @@ targets:
 
 	assert.NotEmpty(t, testTarget.ReceivedLogs)
 
-	assert.Equal(t, testSource1.SentLogs + testSource2.SentLogs, len(testTarget.ReceivedLogs))
+	assert.Equal(t, testSource1.SentLogs+testSource2.SentLogs, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
 		assert.Equal(t, "1", l.SourceMessage.ID)
@@ -177,7 +177,7 @@ targets:
 	targetManager.AddConnection("testTarget2", &testTarget2)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(200 * time.Millisecond)))
 
 		logBroker.Stop()
 	}()
@@ -255,7 +255,7 @@ targets:
 	targetManager.AddConnection("testTarget2", &testTarget2)
 
 	go func() {
-		time.Sleep(time.Until(time.Now().Add(1 * time.Second)))
+		time.Sleep(time.Until(time.Now().Add(200 * time.Millisecond)))
 
 		logBroker.Stop()
 	}()
@@ -287,8 +287,70 @@ targets:
 	}
 }
 
+func benchmarkRunCommand(messages int) {
+	var data = `
+sources:
+  testSource:
+    provider: test
+    targets:
+      - testTarget
+
+targets:
+  testTarget:
+    provider: test
+`
+	c := config.NewConfig()
+
+	_ = c.LoadYAML(data)
+
+	runCommand := NewRunCommand()
+
+	sourceManager := connection.NewManager()
+	targetManager := connection.NewManager()
+
+	logBroker := broker.NewBroker(runCommand.Workers)
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	testSource := TestSource{}
+	testTarget := TestTarget{}
+
+	sourceManager.AddConnection("testSource", &testSource)
+	targetManager.AddConnection("testTarget", &testTarget)
+
+	go func() {
+		for len(testTarget.ReceivedLogs) < messages {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		logBroker.Stop()
+	}()
+
+	_ = runCommand.startProcesses(c, sourceManager, targetManager, logBroker)
+}
+
+func BenchmarkRunCommand_StartWithSingleSourceAndSingleTarget1000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchmarkRunCommand(1000)
+	}
+}
+
+func BenchmarkRunCommand_StartWithSingleSourceAndSingleTarget10000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchmarkRunCommand(10000)
+	}
+}
+
+func BenchmarkRunCommand_StartWithSingleSourceAndSingleTarget100000(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchmarkRunCommand(100000)
+	}
+}
+
 type TestSource struct {
-	SentLogs    int
+	SentLogs int
 }
 type TestTarget struct {
 	ReceivedLogs []*message.TargetMessage

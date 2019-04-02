@@ -6,15 +6,15 @@ import (
 	"time"
 )
 
-var benchBy int64
+var benchBy uint64
 var benchOver bool
 
 func benchmarkRateLimiter(loops int, delta int) {
-	rl := New("limiter", 10000, time.Second, 1 * time.Second)
+	rl := New("limiter", 10000, time.Second, 1*time.Second, 10)
 
 	_ = rl.Init()
 
-	var by int64
+	var by uint64
 	var over bool
 
 	for i := 0; i < loops; i++ {
@@ -22,12 +22,14 @@ func benchmarkRateLimiter(loops int, delta int) {
 		by, over = rl.IsOverLimit()
 	}
 
+	rl.Stop()
+
 	benchBy = by
 	benchOver = over
 }
 
 func TestRateLimiter(t *testing.T) {
-	rl := New("limiter", 5, time.Second, 1 * time.Second)
+	rl := New("limiter", 5, time.Second, 1*time.Second, 10)
 
 	err := rl.Init()
 
@@ -44,8 +46,46 @@ func TestRateLimiter(t *testing.T) {
 			assert.True(t, over)
 		}
 
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
+
+	rl.Stop()
+
+	assert.Equal(t, 2, rl.Store.Len())
+}
+
+func TestRateLimiter_Average(t *testing.T) {
+	rl := New("limiter", 2, 100*time.Millisecond, 100*time.Millisecond, 5)
+
+	err := rl.Init()
+
+	assert.Nil(t, err)
+
+	timesOverAverage := 0
+
+	for i := 0; i < 10; i++ {
+		delta := 1
+
+		if i < 3 {
+			delta = 4
+		} else {
+			delta = 1
+		}
+
+		rl.Increment(uint64(delta))
+
+		_, _, over := rl.IsAverageOverLimit()
+
+		if over {
+			timesOverAverage++
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	rl.Stop()
+
+	assert.NotZero(t, timesOverAverage)
 }
 
 func BenchmarkRateLimiter1000000(b *testing.B) {

@@ -1,25 +1,28 @@
 package cmd
 
 import (
+	"code.cloudfoundry.org/bytefmt"
 	"fmt"
 	"github.com/pm-connect/log-shipper/broker"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
+	"github.com/pm-connect/log-shipper/limiter"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
+	"time"
 )
 
 // RunCommand contains the config and methods for the Run command.
 type RunCommand struct {
-	Config string `help:"Specify the path to the config file."`
-	Workers int `help:"Specify the number of works to run."`
+	Config  string `help:"Specify the path to the config file."`
+	Workers int    `help:"Specify the number of works to run."`
 }
 
 // NewRunCommand created a new instance of the RunCommand ready to use.
 func NewRunCommand() *RunCommand {
 	return &RunCommand{
-		Config: "./config.yaml",
+		Config:  "./config.yaml",
 		Workers: 1,
 	}
 }
@@ -144,9 +147,12 @@ func configureTargets(targets map[string]config.Target, connectionDetails map[st
 
 	for name, c := range targets {
 		if details, ok := connectionDetails[name]; ok {
+			rateLimitRules := createRateLimitRules(name, c.RateLimit)
+
 			brokerTargets[name] = &broker.Target{
 				ConnectionDetails: details,
 				Config:            c,
+				RateLimitRules:    rateLimitRules,
 			}
 		} else {
 			return nil, fmt.Errorf("unable to find connection for source '%s', check config", name)
@@ -154,4 +160,21 @@ func configureTargets(targets map[string]config.Target, connectionDetails map[st
 	}
 
 	return brokerTargets, nil
+}
+
+func createRateLimitRules(name string, rateLimits []config.RateLimit) []broker.RateLimitRule {
+	var rateLimitRules []broker.RateLimitRule
+
+	for _, rateLimit := range rateLimits {
+		bytes, _ := bytefmt.ToBytes(rateLimit.Throughput)
+		interval, _ := time.ParseDuration(rateLimit.Mode.Period)
+		rateLimiter := limiter.New(name, uint64(bytes), interval, interval, rateLimit.Mode.Duration)
+
+		rateLimitRules = append(rateLimitRules, broker.RateLimitRule{
+			RateLimiter:     rateLimiter,
+			BreachBehaviour: rateLimit.BreachBehaviour,
+		})
+	}
+
+	return rateLimitRules
 }

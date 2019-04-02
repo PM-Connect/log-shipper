@@ -3,9 +3,9 @@ package message
 import "encoding/json"
 
 type BrokerMessage struct {
-	Source    string
+	Source        string
 	SourceMessage *SourceMessage
-	Targets   *[]string
+	Targets       *[]string
 }
 
 type SourceMessage struct {
@@ -15,24 +15,24 @@ type SourceMessage struct {
 }
 
 type TargetMessage struct {
-	Target    string
+	Target        string
 	SourceMessage *SourceMessage
-	Source    string
+	Source        string
 }
 
 func BrokerToTarget(target string, b *BrokerMessage) *TargetMessage {
 	return &TargetMessage{
 		SourceMessage: b.SourceMessage,
-		Target:    target,
-		Source:    b.Source,
+		Target:        target,
+		Source:        b.Source,
 	}
 }
 
 func SourceToBroker(source string, targets *[]string, s *SourceMessage) *BrokerMessage {
 	return &BrokerMessage{
 		SourceMessage: s,
-		Source: source,
-		Targets: targets,
+		Source:        source,
+		Targets:       targets,
 	}
 }
 

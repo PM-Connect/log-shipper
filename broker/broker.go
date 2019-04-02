@@ -5,27 +5,33 @@ import (
 	"fmt"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
+	"github.com/pm-connect/log-shipper/limiter"
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
 	"io"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type Broker struct {
-	Sources            map[string]*Source
-	Targets            map[string]*Target
-	NumWorkers         int
+	Sources    map[string]*Source
+	Targets    map[string]*Target
+	NumWorkers int
 
 	// Channels to trigger the stop of workers/sources/targets.
-	WorkerStop         chan interface{}
-	SourceStop         chan interface{}
-	TargetStop         chan interface{}
+	WorkerStop chan interface{}
+	SourceStop chan interface{}
+	TargetStop chan interface{}
 
 	// WaitGroups to ensure graceful halting of processes.
-	GeneralWaitGroup   *sync.WaitGroup
-	WorkerWaitGroup    *sync.WaitGroup
-	SourceWaitGroup    *sync.WaitGroup
-	TargetWaitGroup    *sync.WaitGroup
+	GeneralWaitGroup *sync.WaitGroup
+	WorkerWaitGroup  *sync.WaitGroup
+	SourceWaitGroup  *sync.WaitGroup
+	TargetWaitGroup  *sync.WaitGroup
+	FallbackTargetWaitGroup *sync.WaitGroup
+
+	targetMessagesInFlight uint64
 }
 
 type Source struct {
@@ -36,6 +42,12 @@ type Source struct {
 type Target struct {
 	ConnectionDetails *connection.Details
 	Config            config.Target
+	RateLimitRules    []RateLimitRule
+}
+
+type RateLimitRule struct {
+	RateLimiter     *limiter.RateLimiter
+	BreachBehaviour config.BreachBehaviour
 }
 
 type TargetChannels map[string]chan []byte
@@ -53,6 +65,7 @@ func NewBroker(workers int) *Broker {
 	broker.WorkerWaitGroup = &sync.WaitGroup{}
 	broker.SourceWaitGroup = &sync.WaitGroup{}
 	broker.TargetWaitGroup = &sync.WaitGroup{}
+	broker.FallbackTargetWaitGroup = &sync.WaitGroup{}
 
 	return &broker
 }
@@ -77,6 +90,10 @@ func (b *Broker) Start() error {
 	b.SourceWaitGroup.Wait()
 	close(b.WorkerStop)
 	b.WorkerWaitGroup.Wait()
+	for atomic.LoadUint64(&b.targetMessagesInFlight) > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	b.FallbackTargetWaitGroup.Wait()
 	close(b.TargetStop)
 	b.TargetWaitGroup.Wait()
 	b.GeneralWaitGroup.Wait()
@@ -95,7 +112,7 @@ func (b *Broker) connectToTargets(receiver chan []byte) *TargetChannels {
 		b.TargetWaitGroup.Add(1)
 		b.GeneralWaitGroup.Add(1)
 		listen := make(chan []byte)
-		go b.openTargetConnection(name, target, listen, receiver)
+		go b.openTargetConnection(name, target, listen, receiver, &targetChannels)
 		targetChannels[name] = listen
 	}
 
@@ -142,7 +159,7 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 	}
 }
 
-func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan []byte, receiver chan<- []byte) {
+func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan []byte, receiver chan<- []byte, targets *TargetChannels) {
 	defer b.GeneralWaitGroup.Done()
 	defer b.TargetWaitGroup.Done()
 	conn, err := connection.OpenTCPConnection(target.ConnectionDetails.Host, target.ConnectionDetails.Port)
@@ -158,20 +175,20 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 
 	ready := protocol.SendHello(conn)
 
-	if !ready{
+	if !ready {
 		panic(fmt.Errorf("did not receive HELLO from server"))
 	}
 
+ReceiveLoop:
 	for {
 		select {
 		case data := <-listen:
+			atomic.AddUint64(&b.targetMessagesInFlight, 1)
 			log, err := message.JsonToBroker(data)
 
 			if err != nil {
 				panic(err)
 			}
-
-			// Check Rate Limiting Here
 
 			targetMessage := message.BrokerToTarget(name, log)
 
@@ -179,6 +196,43 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 
 			if err != nil {
 				panic(err)
+			}
+
+			for _, rule := range target.RateLimitRules {
+				if _, _, over := rule.RateLimiter.IsAverageOverLimit(); over {
+					// TODO: Send Alerts
+
+					switch rule.BreachBehaviour.Action {
+					case "discard":
+						atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
+						continue ReceiveLoop
+					case "fallback":
+						b.FallbackTargetWaitGroup.Add(1)
+						newLog := log
+						newTargets := []string{rule.BreachBehaviour.Target}
+						newLog.Targets = &newTargets
+
+						jsonData, err := json.Marshal(newLog)
+
+						if err != nil {
+							panic(err)
+						}
+
+						targetChannels := *targets
+						channel, ok := targetChannels[rule.BreachBehaviour.Target]
+
+						if ok {
+							channel <- jsonData
+						}
+
+						b.FallbackTargetWaitGroup.Done()
+
+						atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
+
+						continue ReceiveLoop
+					}
+					break
+				}
 			}
 
 			_, err = protocol.WriteNewMessage(conn, protocol.CommandTargetLog, string(rawData))
@@ -190,8 +244,16 @@ func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan
 			ok := protocol.WaitForOk(conn)
 
 			if !ok {
+				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
 				return
 			}
+
+
+			for _, rule := range target.RateLimitRules {
+				bytes := uint64(len(rawData))
+				rule.RateLimiter.Increment(bytes)
+			}
+			atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
 		case <-b.TargetStop:
 			protocol.SendBye(conn)
 			_ = conn.Close()

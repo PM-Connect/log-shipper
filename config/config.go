@@ -40,10 +40,9 @@ type RateLimit struct {
 
 // RateLimitMode defines how the throughput is calculated.
 type RateLimitMode struct {
-	Type                string `yaml:"type" validate:"required,oneof=average"`
-	Period              string `yaml:"period" validate:"required,alphanum"`
-	Duration            string `yaml:"duration" validate:"required,alphanum"`
-	PerSourceIdentifier bool   `yaml:"per_source_identifier"`
+	Type     string `yaml:"type" validate:"required,oneof=average"`
+	Period   string `yaml:"period" validate:"required,alphanum"`
+	Duration int    `yaml:"duration" validate:"required"`
 }
 
 // BreachBehaviour defines how a breach is treated and actioned.

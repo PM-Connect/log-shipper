@@ -46,7 +46,7 @@ func (m *Manager) Start() (map[string]*Details, error) {
 }
 
 func OpenTCPConnection(host string, port int) (*net.TCPConn, error) {
-	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", host,port))
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", host, port))
 	conn, err := net.DialTCP("tcp", nil, tcpAddr)
 
 	return conn, err
