@@ -5,7 +5,7 @@ import "encoding/json"
 type BrokerMessage struct {
 	Source        string
 	SourceMessage *SourceMessage
-	Targets       *[]string
+	Targets       []string
 }
 
 type SourceMessage struct {
@@ -28,7 +28,7 @@ func BrokerToTarget(target string, b *BrokerMessage) *TargetMessage {
 	}
 }
 
-func SourceToBroker(source string, targets *[]string, s *SourceMessage) *BrokerMessage {
+func SourceToBroker(source string, targets []string, s *SourceMessage) *BrokerMessage {
 	return &BrokerMessage{
 		SourceMessage: s,
 		Source:        source,
@@ -39,13 +39,11 @@ func SourceToBroker(source string, targets *[]string, s *SourceMessage) *BrokerM
 func JsonToBroker(data []byte) (*BrokerMessage, error) {
 	msg := &BrokerMessage{}
 	err := json.Unmarshal(data, msg)
-
 	return msg, err
 }
 
 func JsonToSource(data []byte) (*SourceMessage, error) {
 	msg := &SourceMessage{}
 	err := json.Unmarshal(data, msg)
-
 	return msg, err
 }

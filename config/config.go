@@ -67,7 +67,6 @@ func NewConfig() *Config {
 // LoadYAML loads a given yaml string into a config struct.
 func (c *Config) LoadYAML(data string) error {
 	err := yaml.Unmarshal([]byte(data), c)
-
 	if err != nil {
 		return fmt.Errorf("error while parsing config file: %s", err)
 	}
@@ -85,9 +84,7 @@ func (c *Config) Validate() (bool, error) {
 		return match.MatchString(fl.Field().String())
 	})
 
-	err := validate.Struct(c)
-
-	if err != nil {
+	if err := validate.Struct(c); err != nil {
 		return false, fmt.Errorf(err.Error())
 	}
 

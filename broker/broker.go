@@ -3,15 +3,16 @@ package broker
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/limiter"
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
-	"io"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 type Broker struct {
@@ -84,7 +85,6 @@ func (b *Broker) Start() error {
 	listeners := b.connectToTargets(receiver)
 
 	b.connectToSources(receiver)
-
 	b.workSources(receiver, listeners)
 
 	b.SourceWaitGroup.Wait()
@@ -140,15 +140,13 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 		select {
 		case data := <-receiver:
 			log, err := message.JsonToBroker(data)
-
 			if err != nil {
 				continue
 			}
 
 			targetChannels := *targets
-			for _, target := range *log.Targets {
+			for _, target := range log.Targets {
 				channel, ok := targetChannels[target]
-
 				if ok {
 					channel <- data
 				}
@@ -162,8 +160,8 @@ func (b *Broker) workReceiver(receiver chan []byte, targets *TargetChannels) {
 func (b *Broker) openTargetConnection(name string, target *Target, listen <-chan []byte, receiver chan<- []byte, targets *TargetChannels) {
 	defer b.GeneralWaitGroup.Done()
 	defer b.TargetWaitGroup.Done()
-	conn, err := connection.OpenTCPConnection(target.ConnectionDetails.Host, target.ConnectionDetails.Port)
 
+	conn, err := connection.OpenTCPConnection(target.ConnectionDetails.Host, target.ConnectionDetails.Port)
 	if err != nil {
 		panic(err)
 	}
@@ -185,7 +183,6 @@ ReceiveLoop:
 		case data := <-listen:
 			atomic.AddUint64(&b.targetMessagesInFlight, 1)
 			log, err := message.JsonToBroker(data)
-
 			if err != nil {
 				panic(err)
 			}
@@ -193,61 +190,24 @@ ReceiveLoop:
 			targetMessage := message.BrokerToTarget(name, log)
 
 			rawData, err := json.Marshal(targetMessage)
-
 			if err != nil {
 				panic(err)
 			}
 
-			for _, rule := range target.RateLimitRules {
-				if _, _, over := rule.RateLimiter.IsAverageOverLimit(); over {
-					// TODO: Send Alerts
-
-					switch rule.BreachBehaviour.Action {
-					case "discard":
-						atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
-						continue ReceiveLoop
-					case "fallback":
-						b.FallbackTargetWaitGroup.Add(1)
-						newLog := log
-						newTargets := []string{rule.BreachBehaviour.Target}
-						newLog.Targets = &newTargets
-
-						jsonData, err := json.Marshal(newLog)
-
-						if err != nil {
-							panic(err)
-						}
-
-						targetChannels := *targets
-						channel, ok := targetChannels[rule.BreachBehaviour.Target]
-
-						if ok {
-							channel <- jsonData
-						}
-
-						b.FallbackTargetWaitGroup.Done()
-
-						atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
-
-						continue ReceiveLoop
-					}
-					break
-				}
+			if passed := b.handleRateLimiting(log, target, targets); !passed {
+				continue ReceiveLoop
 			}
 
 			_, err = protocol.WriteNewMessage(conn, protocol.CommandTargetLog, string(rawData))
-
 			if err != nil {
 				panic(err)
 			}
 
 			ok := protocol.WaitForOk(conn)
-
 			if !ok {
 				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
 				return
 			}
-
 
 			for _, rule := range target.RateLimitRules {
 				bytes := uint64(len(rawData))
@@ -262,16 +222,53 @@ ReceiveLoop:
 	}
 }
 
+func (b *Broker) handleRateLimiting(message *message.BrokerMessage, target *Target, targets *TargetChannels) bool {
+	for _, rule := range target.RateLimitRules {
+		if _, _, over := rule.RateLimiter.IsAverageOverLimit(); over {
+			// TODO: Send Alerts
+
+			switch rule.BreachBehaviour.Action {
+			case "discard":
+				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
+				return false
+			case "fallback":
+				b.FallbackTargetWaitGroup.Add(1)
+				newTargets := []string{rule.BreachBehaviour.Target}
+				message.Targets = newTargets
+
+				jsonData, err := json.Marshal(message)
+				if err != nil {
+					panic(err)
+				}
+
+				targetChannels := *targets
+
+				channel, ok := targetChannels[rule.BreachBehaviour.Target]
+				if ok {
+					channel <- jsonData
+				}
+
+				b.FallbackTargetWaitGroup.Done()
+
+				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
+
+				return false
+			}
+			break
+		}
+	}
+
+	return true
+}
+
 func (b *Broker) openSourceConnection(name string, source *Source, receiver chan []byte) {
 	defer b.SourceWaitGroup.Done()
 	conn, err := connection.OpenTCPConnection(source.ConnectionDetails.Host, source.ConnectionDetails.Port)
-
 	if err != nil {
 		panic(err)
 	}
 
 	ready := protocol.SendHello(conn)
-
 	if !ready {
 		panic(fmt.Errorf("failed to send hello to source"))
 	}
@@ -292,15 +289,13 @@ func (b *Broker) openSourceConnection(name string, source *Source, receiver chan
 			switch msg.Command {
 			case protocol.CommandSourceMessage:
 				sourceMsg, err := message.JsonToSource(msg.Data)
-
 				if err != nil {
 					panic(err)
 				}
 
-				log := message.SourceToBroker(name, &source.Targets, sourceMsg)
+				log := message.SourceToBroker(name, source.Targets, sourceMsg)
 
 				jsonData, err := json.Marshal(log)
-
 				if err != nil {
 					panic(err)
 				}

@@ -1,16 +1,17 @@
 package cmd
 
 import (
-	"code.cloudfoundry.org/bytefmt"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"time"
+
+	"code.cloudfoundry.org/bytefmt"
 	"github.com/pm-connect/log-shipper/broker"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/limiter"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
-	"os"
-	"time"
 )
 
 // RunCommand contains the config and methods for the Run command.
@@ -30,7 +31,6 @@ func NewRunCommand() *RunCommand {
 // Run starts the command.
 func (c *RunCommand) Run() error {
 	conf, err := c.loadConfig()
-
 	if err != nil {
 		log.Fatalf("error reading config: %s", err)
 	}
@@ -41,7 +41,6 @@ func (c *RunCommand) Run() error {
 	logBroker := broker.NewBroker(c.Workers)
 
 	err = c.startProcesses(conf, sourceManager, targetManager, logBroker)
-
 	if err != nil {
 		log.Fatalf("error starting processes: %s", err)
 	}
@@ -54,13 +53,11 @@ func (c *RunCommand) loadConfig() (*config.Config, error) {
 	conf := config.NewConfig()
 
 	data, err := c.readConfigFile()
-
 	if err != nil {
 		return nil, err
 	}
 
 	err = conf.LoadYAML(data)
-
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +72,6 @@ func (c *RunCommand) readConfigFile() (string, error) {
 	}
 
 	data, err := ioutil.ReadFile(c.Config)
-
 	if err != nil {
 		return "", err
 	}
@@ -85,25 +81,21 @@ func (c *RunCommand) readConfigFile() (string, error) {
 
 func (c *RunCommand) startProcesses(conf *config.Config, sourceManager *connection.Manager, targetManager *connection.Manager, logBroker *broker.Broker) error {
 	sourceConnections, err := sourceManager.Start()
-
 	if err != nil {
 		return fmt.Errorf("error starting sources: %s", err)
 	}
 
 	targetConnections, err := targetManager.Start()
-
 	if err != nil {
 		return fmt.Errorf("error starting targets: %s", err)
 	}
 
 	brokerSources, err := configureSources(conf.Sources, sourceConnections)
-
 	if err != nil {
 		return fmt.Errorf("error configuring sources: %s", err)
 	}
 
 	brokerTargets, err := configureTargets(conf.Targets, targetConnections)
-
 	if err != nil {
 		return fmt.Errorf("error configuring targets: %s", err)
 	}
@@ -117,7 +109,6 @@ func (c *RunCommand) startProcesses(conf *config.Config, sourceManager *connecti
 	}
 
 	err = logBroker.Start()
-
 	if err != nil {
 		return fmt.Errorf("error starting broker: %s", err)
 	}

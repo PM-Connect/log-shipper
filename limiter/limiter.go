@@ -28,7 +28,7 @@ type RateLimiter struct {
 
 type StoreItem struct {
 	Value uint64
-	Time  time.Time
+	TTL time.Time
 }
 
 type Store struct {
@@ -37,25 +37,22 @@ type Store struct {
 }
 
 func (s *Store) Get(key string) (StoreItem, bool) {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	defer s.RUnlock()
 
 	value, ok := s.Items[key]
-
 	return value, ok
 }
 
 func (s *Store) Set(key string, value StoreItem) {
 	s.Lock()
 	defer s.Unlock()
-
 	s.Items[key] = value
 }
 
 func (s *Store) Len() int {
-	s.Lock()
-	defer s.Unlock()
-
+	s.RLock()
+	defer s.RUnlock()
 	return len(s.Items)
 }
 
@@ -82,17 +79,20 @@ func (r *RateLimiter) updateCurrentKey() {
 
 	r.currentKey = fmt.Sprintf("%s:%s", r.BaseKey, currentTimeIntervalString)
 
-	r.Store.Set(r.currentKey, StoreItem{Value: 0, Time: curTime})
+	r.Store.Set(r.currentKey, StoreItem{Value: 0, TTL: time.Now().Add(time.Duration(r.StoreMultiplier) * r.FlushInterval)})
+}
 
+func (r *RateLimiter) purgeExpiredKeys() {
 	r.Store.Lock()
-	defer r.Store.Unlock()
-
 	for key, item := range r.Store.Items {
-		if key != r.currentKey && time.Since(item.Time) > (time.Duration(r.StoreMultiplier)*r.FlushInterval) {
+		fmt.Println(time.Since(item.TTL))
+		if key != r.currentKey && time.Since(item.TTL) > 0 {
 			atomic.AddUint64(&r.TotalStoredCount, ^uint64(item.Value-1))
+
 			delete(r.Store.Items, key)
 		}
 	}
+	r.Store.Unlock()
 }
 
 func (r *RateLimiter) Stop() {
@@ -103,7 +103,10 @@ func (r *RateLimiter) Stop() {
 func (r *RateLimiter) Flush() {
 	flushCount := atomic.SwapUint64(&r.currentCount, 0)
 
-	currentStored, _ := r.Store.Get(r.currentKey)
+	currentStored, ok := r.Store.Get(r.currentKey)
+	if !ok {
+		return
+	}
 
 	value := atomic.LoadUint64(&currentStored.Value) + flushCount
 	atomic.StoreUint64(&currentStored.Value, value)
@@ -160,6 +163,7 @@ func (r *RateLimiter) Init() error {
 			select {
 			case <-r.ticker.C:
 				r.updateCurrentKey()
+				r.purgeExpiredKeys()
 				r.Flush()
 			case <-r.stopTicker:
 				r.ticker.Stop()
