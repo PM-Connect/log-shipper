@@ -195,6 +195,7 @@ ReceiveLoop:
 			}
 
 			if passed := b.handleRateLimiting(log, target, targets); !passed {
+				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
 				continue ReceiveLoop
 			}
 
@@ -229,7 +230,6 @@ func (b *Broker) handleRateLimiting(message *message.BrokerMessage, target *Targ
 
 			switch rule.BreachBehaviour.Action {
 			case "discard":
-				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
 				return false
 			case "fallback":
 				b.FallbackTargetWaitGroup.Add(1)
@@ -249,8 +249,6 @@ func (b *Broker) handleRateLimiting(message *message.BrokerMessage, target *Targ
 				}
 
 				b.FallbackTargetWaitGroup.Done()
-
-				atomic.AddUint64(&b.targetMessagesInFlight, ^uint64(0))
 
 				return false
 			}
