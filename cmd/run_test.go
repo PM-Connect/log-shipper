@@ -1,13 +1,14 @@
 package cmd
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
 	"github.com/phayes/freeport"
 	"github.com/pm-connect/log-shipper/broker"
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/message"
+	"github.com/pm-connect/log-shipper/monitoring"
 	"github.com/pm-connect/log-shipper/protocol"
 	"github.com/stretchr/testify/assert"
 	"sync"
@@ -38,7 +39,9 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers)
+	monitor := monitoring.NewMonitor(nil)
+
+	logBroker := broker.NewBroker(runCommand.Workers, monitor)
 
 	var wg sync.WaitGroup
 
@@ -65,11 +68,31 @@ targets:
 	assert.Equal(t, testSource.SentLogs, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceMessage.ID)
+		assert.Equal(t, "1", l.SourceMessage.Id)
 		assert.Equal(t, "testTarget", l.Target)
 		assert.Equal(t, "testSource", l.Source)
-		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
+	}
+
+	for _, c := range monitor.ConnectionStore.Connections {
+		assert.Equal(t, "finished", c.State)
+		assert.Equal(t, c.Stats.GetMessagesInbound(), c.Stats.GetMessagesOutbound())
+		assert.NotZero(t, c.Stats.GetMessagesOutbound())
+		assert.NotZero(t, c.Stats.GetMessagesInbound())
+		assert.Zero(t, c.Stats.GetInFlightMessages())
+		assert.NotZero(t, c.Stats.GetBytesProcessed())
+		assert.Nil(t, c.LastLog.Log)
+	}
+
+	for _, p := range monitor.ProcessStore.Processes {
+		assert.Equal(t, "finished", p.State)
+		assert.NotZero(t, p.Stats.GetBytesProcessed())
+		assert.NotZero(t, p.Stats.GetMessagesOutbound())
+		assert.NotZero(t, p.Stats.GetMessagesInbound())
+		assert.Zero(t, p.Stats.GetInFlightMessages())
+		assert.Equal(t, "worker", p.Type)
+		assert.Nil(t, p.LastLog.Log)
 	}
 }
 
@@ -100,7 +123,7 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers)
+	logBroker := broker.NewBroker(runCommand.Workers, nil)
 
 	var wg sync.WaitGroup
 
@@ -129,9 +152,9 @@ targets:
 	assert.Equal(t, testSource1.SentLogs+testSource2.SentLogs, len(testTarget.ReceivedLogs))
 
 	for _, l := range testTarget.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceMessage.ID)
+		assert.Equal(t, "1", l.SourceMessage.Id)
 		assert.Equal(t, "testTarget", l.Target)
-		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
@@ -162,7 +185,7 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers)
+	logBroker := broker.NewBroker(runCommand.Workers, nil)
 
 	var wg sync.WaitGroup
 
@@ -193,18 +216,18 @@ targets:
 	assert.Equal(t, testSource.SentLogs, len(testTarget2.ReceivedLogs))
 
 	for _, l := range testTarget1.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceMessage.ID)
+		assert.Equal(t, "1", l.SourceMessage.Id)
 		assert.Equal(t, "testTarget1", l.Target)
 		assert.Equal(t, "testSource", l.Source)
-		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 
 	for _, l := range testTarget2.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceMessage.ID)
+		assert.Equal(t, "1", l.SourceMessage.Id)
 		assert.Equal(t, "testTarget2", l.Target)
 		assert.Equal(t, "testSource", l.Source)
-		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
@@ -238,7 +261,7 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers)
+	logBroker := broker.NewBroker(runCommand.Workers, nil)
 
 	var wg sync.WaitGroup
 
@@ -271,18 +294,18 @@ targets:
 	assert.Equal(t, testSource2.SentLogs, len(testTarget2.ReceivedLogs))
 
 	for _, l := range testTarget1.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceMessage.ID)
+		assert.Equal(t, "1", l.SourceMessage.Id)
 		assert.Equal(t, "testTarget1", l.Target)
 		assert.Equal(t, "testSource1", l.Source)
-		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 
 	for _, l := range testTarget2.ReceivedLogs {
-		assert.Equal(t, "1", l.SourceMessage.ID)
+		assert.Equal(t, "1", l.SourceMessage.Id)
 		assert.Equal(t, "testTarget2", l.Target)
 		assert.Equal(t, "testSource2", l.Source)
-		assert.Equal(t, "Test", l.SourceMessage.Message)
+		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
 }
@@ -308,7 +331,7 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers)
+	logBroker := broker.NewBroker(runCommand.Workers, nil)
 
 	var wg sync.WaitGroup
 
@@ -378,22 +401,24 @@ func (s *TestSource) Start() (*connection.Details, error) {
 
 		defer conn.Close()
 
-		ready := protocol.WaitForHello(conn)
+		reader := bufio.NewReader(conn)
+
+		ready := protocol.WaitForHello(reader)
 
 		if !ready {
 			panic(fmt.Errorf("failed to receive HELLO from broker"))
 		}
 
 		for {
-			log := message.SourceMessage{
-				ID:      "1",
-				Message: "Test",
+			log := &message.SourceMessage{
+				Id:      "1",
+				Message: []byte("Test"),
 				Meta: map[string]string{
 					"some-key": "some-value",
 				},
 			}
 
-			data, err := json.Marshal(log)
+			data, err := message.ToProtobuf(log)
 
 			if err != nil {
 				panic(err)
@@ -405,7 +430,7 @@ func (s *TestSource) Start() (*connection.Details, error) {
 				panic(err)
 			}
 
-			ok := protocol.WaitForOk(conn)
+			ok := protocol.WaitForOk(reader)
 
 			if !ok {
 				return
@@ -446,7 +471,9 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 			_ = conn.Close()
 		}()
 
-		ready := protocol.WaitForHello(conn)
+		reader := bufio.NewReader(conn)
+
+		ready := protocol.WaitForHello(reader)
 
 		if !ready {
 			panic(fmt.Errorf("failed to receive HELLO from broker"))
@@ -455,22 +482,20 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 		receiveChan := make(chan *protocol.Message)
 		errorChan := make(chan error)
 
-		go protocol.ReadToChannel(conn, receiveChan, errorChan)
+		go protocol.ReadToChannel(reader, receiveChan, errorChan)
 
 		for {
 			select {
 			case msg := <-receiveChan:
 				switch msg.Command {
 				case protocol.CommandTargetLog:
-					log := message.TargetMessage{}
-
-					err = json.Unmarshal([]byte(msg.Data), &log)
+					log, err := message.ProtobufToTarget(msg.Data)
 
 					if err != nil {
 						panic(err)
 					}
 
-					t.ReceivedLogs = append(t.ReceivedLogs, &log)
+					t.ReceivedLogs = append(t.ReceivedLogs, log)
 
 					protocol.SendOk(conn)
 				case protocol.CommandBye:

@@ -1,7 +1,7 @@
 package broker
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
 	"github.com/phayes/freeport"
 	"github.com/pm-connect/log-shipper/config"
@@ -10,28 +10,20 @@ import (
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
 	"github.com/stretchr/testify/assert"
-	"sync"
 	"testing"
 	"time"
 )
 
 func TestNewBroker(t *testing.T) {
-	broker := NewBroker(1)
+	broker := NewBroker(1, nil)
 
 	assert.Len(t, broker.Sources, 0)
 	assert.Len(t, broker.Targets, 0)
-	assert.IsType(t, &sync.WaitGroup{}, broker.WorkerWaitGroup)
-	assert.IsType(t, &sync.WaitGroup{}, broker.SourceWaitGroup)
-	assert.IsType(t, &sync.WaitGroup{}, broker.TargetWaitGroup)
-	assert.IsType(t, &sync.WaitGroup{}, broker.GeneralWaitGroup)
 	assert.Equal(t, 1, broker.NumWorkers)
-	assert.IsType(t, make(chan interface{}), broker.WorkerStop)
-	assert.IsType(t, make(chan interface{}), broker.SourceStop)
-	assert.IsType(t, make(chan interface{}), broker.TargetStop)
 }
 
 func TestBroker_AddSource(t *testing.T) {
-	broker := NewBroker(1)
+	broker := NewBroker(1, nil)
 
 	source := &Source{}
 
@@ -42,7 +34,7 @@ func TestBroker_AddSource(t *testing.T) {
 }
 
 func TestBroker_AddTarget(t *testing.T) {
-	broker := NewBroker(1)
+	broker := NewBroker(1, nil)
 
 	target := &Target{}
 
@@ -53,7 +45,7 @@ func TestBroker_AddTarget(t *testing.T) {
 }
 
 func TestBroker_Start(t *testing.T) {
-	broker := NewBroker(1)
+	broker := NewBroker(1, nil)
 
 	primarySourceServer := TestSource{}
 	primaryTargetServer := TestTarget{}
@@ -115,7 +107,6 @@ func TestBroker_Start(t *testing.T) {
 
 	go func() {
 		for range time.Tick(100 * time.Millisecond) {
-			fmt.Println("triggering stop")
 			broker.Stop()
 			break
 		}
@@ -157,22 +148,24 @@ func (s *TestSource) Start() (*connection.Details, error) {
 
 		defer conn.Close()
 
-		ready := protocol.WaitForHello(conn)
+		reader := bufio.NewReader(conn)
+
+		ready := protocol.WaitForHello(reader)
 
 		if !ready {
 			panic(fmt.Errorf("failed to receive HELLO from broker"))
 		}
 
 		for {
-			log := message.SourceMessage{
-				ID:      "1",
-				Message: "Test",
+			log := &message.SourceMessage{
+				Id:      "1",
+				Message: []byte("Test"),
 				Meta: map[string]string{
 					"some-key": "some-value",
 				},
 			}
 
-			data, err := json.Marshal(log)
+			data, err := message.ToProtobuf(log)
 
 			if err != nil {
 				panic(err)
@@ -184,7 +177,7 @@ func (s *TestSource) Start() (*connection.Details, error) {
 				panic(err)
 			}
 
-			ok := protocol.WaitForOk(conn)
+			ok := protocol.WaitForOk(reader)
 
 			if !ok {
 				return
@@ -225,7 +218,9 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 			_ = conn.Close()
 		}()
 
-		ready := protocol.WaitForHello(conn)
+		reader := bufio.NewReader(conn)
+
+		ready := protocol.WaitForHello(reader)
 
 		if !ready {
 			panic(fmt.Errorf("failed to receive HELLO from broker"))
@@ -234,22 +229,20 @@ func (t *TestTarget) Start() (*connection.Details, error) {
 		receiveChan := make(chan *protocol.Message)
 		errorChan := make(chan error)
 
-		go protocol.ReadToChannel(conn, receiveChan, errorChan)
+		go protocol.ReadToChannel(reader, receiveChan, errorChan)
 
 		for {
 			select {
 			case msg := <-receiveChan:
 				switch msg.Command {
 				case protocol.CommandTargetLog:
-					log := message.TargetMessage{}
-
-					err = json.Unmarshal([]byte(msg.Data), &log)
+					log, err := message.ProtobufToTarget(msg.Data)
 
 					if err != nil {
 						panic(err)
 					}
 
-					t.ReceivedLogs = append(t.ReceivedLogs, &log)
+					t.ReceivedLogs = append(t.ReceivedLogs, log)
 
 					protocol.SendOk(conn)
 				case protocol.CommandBye:

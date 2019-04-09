@@ -1,24 +1,10 @@
+//go:generate protoc --go_out=. protobuf.proto
+
 package message
 
-import "encoding/json"
-
-type BrokerMessage struct {
-	Source        string
-	SourceMessage *SourceMessage
-	Targets       []string
-}
-
-type SourceMessage struct {
-	ID      string
-	Message string
-	Meta    map[string]string
-}
-
-type TargetMessage struct {
-	Target        string
-	SourceMessage *SourceMessage
-	Source        string
-}
+import (
+	"github.com/golang/protobuf/proto"
+)
 
 func BrokerToTarget(target string, b *BrokerMessage) *TargetMessage {
 	return &TargetMessage{
@@ -36,14 +22,30 @@ func SourceToBroker(source string, targets []string, s *SourceMessage) *BrokerMe
 	}
 }
 
-func JsonToBroker(data []byte) (*BrokerMessage, error) {
+func ProtobufToBroker(data []byte) (*BrokerMessage, error) {
 	msg := &BrokerMessage{}
-	err := json.Unmarshal(data, msg)
+
+	err := proto.Unmarshal(data, msg)
+
 	return msg, err
 }
 
-func JsonToSource(data []byte) (*SourceMessage, error) {
+func ProtobufToSource(data []byte) (*SourceMessage, error) {
 	msg := &SourceMessage{}
-	err := json.Unmarshal(data, msg)
+
+	err := proto.Unmarshal(data, msg)
+
 	return msg, err
+}
+
+func ProtobufToTarget(data []byte) (*TargetMessage, error) {
+	msg := &TargetMessage{}
+
+	err := proto.Unmarshal(data, msg)
+
+	return msg, err
+}
+
+func ToProtobuf(msg proto.Message) ([]byte, error) {
+	return proto.Marshal(msg)
 }

@@ -1,11 +1,13 @@
+//go:generate protoc --go_out=. protobuf.proto
+
 package protocol
 
 import (
 	"bufio"
-	"encoding/base64"
-	"fmt"
+	"bytes"
+	"encoding/binary"
+	"github.com/golang/protobuf/proto"
 	"io"
-	"strings"
 )
 
 const CommandHello = "HELLO"
@@ -14,77 +16,80 @@ const CommandSourceMessage = "SMSG"
 const CommandTargetLog = "TMSG"
 const CommandBye = "BYE"
 
-// Message is the data of a full message for the protocol.
-type Message struct {
-	Command string
-	Data    []byte
-}
-
-// ParseBytes parses a set of bytes into a message.
-func ParseBytes(bytes []byte) (Message, error) {
-	messageParts := strings.SplitN(strings.TrimSpace(string(bytes)), " ", 2)
-
-	if len(messageParts) == 1 {
-		return Message{
-			Command: messageParts[0],
-		}, nil
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(messageParts[1])
-
-	if err != nil {
-		return Message{}, err
-	}
-
-	return Message{
-		Command: messageParts[0],
-		Data:    decoded,
-	}, nil
-}
-
 // ReadMessage reads from an instance of io.Reader and returns a single message when found.
-func ReadMessage(conn io.Reader) (*Message, error) {
-	data, err := bufio.NewReader(conn).ReadBytes('\n')
+func ReadMessage(reader *bufio.Reader) (*Message, error) {
+	message := &Message{}
+
+	b, err := reader.ReadBytes(' ')
 
 	if err != nil {
-		return &Message{}, err
+		return message, err
 	}
 
-	message, err := ParseBytes(data)
+	if len(b) == 0 {
+		return message, nil
+	}
 
-	return &message, nil
+	size := binary.LittleEndian.Uint64(b[:len(b)-1])
+
+	data := make([]byte, size)
+
+	_, err = reader.Read(data)
+
+	if err != nil {
+		return message, err
+	}
+
+	err = proto.Unmarshal(data, message)
+
+	return message, err
 }
 
 // WriteMessage sends a message to an instance of io.Writer.
 func WriteMessage(conn io.Writer, message *Message) error {
 	var data []byte
 
-	if len(message.Data) == 0 {
-		data = []byte(fmt.Sprintf("%s\n", message.Command))
-	} else {
-		data = []byte(fmt.Sprintf("%s %s\n", message.Command, base64.StdEncoding.EncodeToString([]byte(message.Data))))
+	data, err := proto.Marshal(message)
+
+	if err != nil {
+		return err
 	}
 
-	_, err := conn.Write(data)
+	size := uint64(len(data))
+
+	b := []byte("")
+
+	buff := new(bytes.Buffer)
+	err = binary.Write(buff, binary.LittleEndian, size)
+
+	if err != nil {
+		return err
+	}
+
+	b = append(b[:], buff.Bytes()[:]...)
+	b = append(b[:], []byte(" ")[:]...)
+	b = append(b[:], data[:]...)
+
+	_, err = conn.Write(b)
 
 	return err
 }
 
 // WriteNewMessage creates a message and sends it to the instance of io.Writer, then returns the created message.
 func WriteNewMessage(conn io.Writer, command string, data string) (*Message, error) {
-	message := Message{
+	message := &Message{
 		Command: command,
 		Data:    []byte(data),
 	}
 
-	return &message, WriteMessage(conn, &message)
+	return message, WriteMessage(conn, message)
 }
 
 // ReadToChannel reads an instance of io.Reader and sends all messages received to a given channel.
 // Any errors received are sent to the errorChan.
-func ReadToChannel(conn io.Reader, messageChan chan<- *Message, errorChan chan<- error) {
+func ReadToChannel(reader *bufio.Reader, messageChan chan<- *Message, errorChan chan<- error) {
 	for {
-		message, err := ReadMessage(conn)
+		message, err := ReadMessage(reader)
 
 		if err != nil {
 			if err == io.EOF {
@@ -111,8 +116,8 @@ func WriteFromChannel(conn io.Writer, messageChan <-chan *Message, errorChan cha
 	}
 }
 
-func WaitForHello(conn io.Reader) bool {
-	message, err := ReadMessage(conn)
+func WaitForHello(reader *bufio.Reader) bool {
+	message, err := ReadMessage(reader)
 
 	if err != nil || message.Command != CommandHello {
 		return false
@@ -131,8 +136,8 @@ func SendHello(conn io.Writer) bool {
 	return true
 }
 
-func WaitForOk(conn io.Reader) bool {
-	message, err := ReadMessage(conn)
+func WaitForOk(reader *bufio.Reader) bool {
+	message, err := ReadMessage(reader)
 
 	if err != nil || message.Command != CommandOk {
 		return false

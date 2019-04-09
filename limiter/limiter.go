@@ -28,7 +28,7 @@ type RateLimiter struct {
 
 type StoreItem struct {
 	Value uint64
-	TTL time.Time
+	TTL   time.Time
 }
 
 type Store struct {
@@ -85,7 +85,6 @@ func (r *RateLimiter) updateCurrentKey() {
 func (r *RateLimiter) purgeExpiredKeys() {
 	r.Store.Lock()
 	for key, item := range r.Store.Items {
-		fmt.Println(time.Since(item.TTL))
 		if key != r.currentKey && time.Since(item.TTL) > 0 {
 			atomic.AddUint64(&r.TotalStoredCount, ^uint64(item.Value-1))
 

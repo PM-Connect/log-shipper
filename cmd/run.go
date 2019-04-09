@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/pm-connect/log-shipper/monitoring"
 	"io/ioutil"
 	"os"
 	"time"
@@ -35,10 +36,12 @@ func (c *RunCommand) Run() error {
 		log.Fatalf("error reading config: %s", err)
 	}
 
+	monitor := monitoring.NewMonitor(log.StandardLogger())
+
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(c.Workers)
+	logBroker := broker.NewBroker(c.Workers, monitor)
 
 	err = c.startProcesses(conf, sourceManager, targetManager, logBroker)
 	if err != nil {
