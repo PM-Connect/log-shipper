@@ -4,6 +4,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"sync"
+	"time"
 )
 
 type Monitor struct {
@@ -31,14 +32,15 @@ type LastLog struct {
 }
 
 type LogItem struct {
-	Level log.Level
+	Level   log.Level
 	Message string
+	Time time.Time
 }
 
 func NewMonitor(logger *log.Logger) *Monitor {
 	return &Monitor{
 		ConnectionStore: ConnectionStore{},
-		Logger: logger,
+		Logger:          logger,
 	}
 }
 
@@ -60,7 +62,7 @@ func (m *Monitor) LogForProcess(proc *Process, level log.Level, msg string) {
 	m.Log(level, fmt.Sprintf("%s %s: %s", proc.Name, proc.Type, msg))
 
 	proc.LastLog.Lock()
-	proc.LastLog.Log = &LogItem{Level: level, Message: msg}
+	proc.LastLog.Log = &LogItem{Level: level, Message: msg, Time: time.Now()}
 	proc.LastLog.Unlock()
 }
 
@@ -68,7 +70,7 @@ func (m *Monitor) LogForConnection(conn *Connection, level log.Level, msg string
 	m.Log(level, fmt.Sprintf("%s %s: %s", conn.Name, conn.Type, msg))
 
 	conn.LastLog.Lock()
-	conn.LastLog.Log = &LogItem{Level: level, Message: msg}
+	conn.LastLog.Log = &LogItem{Level: level, Message: msg, Time: time.Now()}
 	conn.LastLog.Unlock()
 }
 

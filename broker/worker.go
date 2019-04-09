@@ -11,20 +11,20 @@ import (
 type WorkerManager struct {
 	WaitGroup *sync.WaitGroup
 	StopChan  chan interface{}
-	Monitor *monitoring.Monitor
+	Monitor   *monitoring.Monitor
 }
 
 type Worker struct {
-	Manager *WorkerManager
+	Manager          *WorkerManager
 	ConnectorManager *ConnectorManager
-	ProcessMonitor *monitoring.Process
+	ProcessMonitor   *monitoring.Process
 }
 
 func NewWorkerManager(monitor *monitoring.Monitor) *WorkerManager {
 	return &WorkerManager{
 		WaitGroup: &sync.WaitGroup{},
 		StopChan:  make(chan interface{}),
-		Monitor: monitor,
+		Monitor:   monitor,
 	}
 }
 

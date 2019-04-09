@@ -3,7 +3,45 @@ sources:
     provider: dummy
     targets:
       - target_one
+  source_two:
+    provider: dummy
+    targets:
+      - target_two
+  source_three:
+    provider: dummy
+    targets:
+      - target_one
+      - target_two
+  rate_limited:
+    provider: dummy
+    targets:
+      - target_three
 
 targets:
   target_one:
     provider: blackhole
+  target_two:
+    provider: blackhole
+  target_three:
+    provider: blackhole
+    rate_limit:
+      - throughput: 2MB
+        mode:
+          type: average
+          period: 1s
+          duration: 10
+        breach_behaviour:
+          action: fallback
+          target: fallback
+          alert: ERROR
+  fallback:
+    provider: blackhole
+    rate_limit:
+      - throughput: 5MB
+        mode:
+          type: average
+          period: 1s
+          duration: 10
+        breach_behaviour:
+          action: discard
+          alert: WARN

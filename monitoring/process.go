@@ -12,8 +12,8 @@ type Process struct {
 
 func NewProcess(name string, processType string) *Process {
 	return &Process{
-		Name: name,
-		Type: processType,
+		Name:  name,
+		Type:  processType,
 		Stats: Stats{},
 	}
 }

@@ -12,7 +12,7 @@ type Broker struct {
 	Targets    map[string]*Target
 	NumWorkers int
 
-	WorkerManager *WorkerManager
+	WorkerManager    *WorkerManager
 	ConnectorManager *ConnectorManager
 
 	Monitor *monitoring.Monitor

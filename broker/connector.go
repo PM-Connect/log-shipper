@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/pm-connect/log-shipper/connection"
+	"github.com/pm-connect/log-shipper/limiter"
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/monitoring"
 	"github.com/pm-connect/log-shipper/protocol"
@@ -36,45 +37,45 @@ type Connector interface {
 }
 
 type SourceConnector struct {
-	Name string
-	Source *Source
-	Manager *ConnectorManager
+	Name      string
+	Source    *Source
+	Manager   *ConnectorManager
 	WaitGroup *sync.WaitGroup
-	Outbound chan<- []byte
-	StopChan chan interface{}
+	Outbound  chan<- []byte
+	StopChan  chan interface{}
 }
 
 type TargetConnector struct {
-	Name string
-	Target *Target
-	Inbound chan []byte
-	Manager *ConnectorManager
+	Name      string
+	Target    *Target
+	Inbound   chan []byte
+	Manager   *ConnectorManager
 	WaitGroup *sync.WaitGroup
-	StopChan chan interface{}
+	StopChan  chan interface{}
 }
 
 func NewConnectorManager(monitor *monitoring.Monitor) *ConnectorManager {
 	return &ConnectorManager{
-		TargetConnectors: map[string]Connector{},
-		SourceConnectors: map[string]Connector{},
-		TargetWaitGroup: &sync.WaitGroup{},
-		SourceWaitGroup: &sync.WaitGroup{},
-		TargetStop: make(chan interface{}),
-		SourceStop: make(chan interface{}),
+		TargetConnectors:  map[string]Connector{},
+		SourceConnectors:  map[string]Connector{},
+		TargetWaitGroup:   &sync.WaitGroup{},
+		SourceWaitGroup:   &sync.WaitGroup{},
+		TargetStop:        make(chan interface{}),
+		SourceStop:        make(chan interface{}),
 		InFlightWaitGroup: &sync.WaitGroup{},
-		Monitor: monitor,
+		Monitor:           monitor,
 	}
 }
 
 func (m *ConnectorManager) Start(sources map[string]*Source, targets map[string]*Target) chan []byte {
 	for name, target := range targets {
 		connector := &TargetConnector{
-			Name: name,
-			Target: target,
-			Inbound: make(chan []byte),
-			Manager: m,
+			Name:      name,
+			Target:    target,
+			Inbound:   make(chan []byte),
+			Manager:   m,
 			WaitGroup: m.TargetWaitGroup,
-			StopChan: m.TargetStop,
+			StopChan:  m.TargetStop,
 		}
 
 		m.TargetConnectors[name] = connector
@@ -87,12 +88,12 @@ func (m *ConnectorManager) Start(sources map[string]*Source, targets map[string]
 
 	for name, source := range sources {
 		connector := &SourceConnector{
-			Name: name,
-			Source: source,
-			Manager: m,
+			Name:      name,
+			Source:    source,
+			Manager:   m,
 			WaitGroup: m.SourceWaitGroup,
-			Outbound: outbound,
-			StopChan: m.SourceStop,
+			Outbound:  outbound,
+			StopChan:  m.SourceStop,
 		}
 
 		m.SourceConnectors[name] = connector
@@ -144,10 +145,17 @@ func (m *ConnectorManager) StopSources() {
 func (t *TargetConnector) Handle() {
 	defer t.WaitGroup.Done()
 
+	var rateLimiters []*limiter.RateLimiter
+
+	for _, rule := range t.Target.RateLimitRules {
+		rateLimiters = append(rateLimiters, rule.RateLimiter)
+	}
+
 	monitoringConnection := monitoring.NewConnection(
 		t.Target.ConnectionDetails,
 		t.Name,
 		"target",
+		rateLimiters,
 	)
 
 	monitoringConnection.SetState("starting")
@@ -191,6 +199,7 @@ ReceiveLoop:
 			if err != nil {
 				monitoringConnection.SetState("dead")
 				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
 
@@ -200,10 +209,12 @@ ReceiveLoop:
 			if err != nil {
 				monitoringConnection.SetState("dead")
 				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
 
 			if passed := t.handleRateLimiting(l, monitoringConnection); !passed {
+				t.Manager.Monitor.LogForConnection(monitoringConnection, log.InfoLevel, "log failed rate limit check, waiting for next message")
 				continue ReceiveLoop
 			}
 
@@ -211,6 +222,7 @@ ReceiveLoop:
 			if err != nil {
 				monitoringConnection.SetState("dead")
 				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
 
@@ -221,6 +233,7 @@ ReceiveLoop:
 				t.Manager.CompleteMessage()
 				monitoringConnection.SetState("dead")
 				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
 
@@ -247,6 +260,8 @@ func (t *TargetConnector) handleRateLimiting(m *message.BrokerMessage, monitorin
 			switch rule.BreachBehaviour.Action {
 			case "discard":
 				t.Manager.CompleteMessage()
+				monitoringConnection.Stats.RemoveInFlightMessage()
+				monitoringConnection.Stats.IncrementDroppedMessages(uint64(1))
 				return false
 			case "fallback":
 				newTargets := []string{rule.BreachBehaviour.Target}
@@ -259,9 +274,12 @@ func (t *TargetConnector) handleRateLimiting(m *message.BrokerMessage, monitorin
 					return false
 				}
 
+				t.Manager.Monitor.LogForConnection(monitoringConnection, log.InfoLevel, fmt.Sprintf("rate limit reached, falling back to target \"%s\"", rule.BreachBehaviour.Target))
+
 				err = t.Manager.SendToTarget(rule.BreachBehaviour.Target, rawData)
 
 				monitoringConnection.Stats.IncrementMessagesOutbound(uint64(1))
+				monitoringConnection.Stats.IncrementResentMessages(uint64(1))
 
 				if err != nil {
 					t.Manager.Monitor.LogForConnection(monitoringConnection, log.ErrorLevel, err.Error())
@@ -287,6 +305,7 @@ func (s *SourceConnector) Handle() {
 		s.Source.ConnectionDetails,
 		s.Name,
 		"source",
+		nil,
 	)
 
 	monitoringConnection.SetState("starting")
@@ -335,7 +354,8 @@ func (s *SourceConnector) Handle() {
 				sourceMsg, err := message.ProtobufToSource(msg.Data)
 				if err != nil {
 					monitoringConnection.SetState("dead")
-					panic(err)
+					s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+					return
 				}
 
 				l := message.SourceToBroker(s.Name, s.Source.Targets, sourceMsg)
