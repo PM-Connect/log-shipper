@@ -25,7 +25,7 @@ targets:
   target_three:
     provider: blackhole
     rate_limit:
-      - throughput: 2MB
+      - throughput: 180KB
         mode:
           type: average
           period: 1s
@@ -37,7 +37,7 @@ targets:
   fallback:
     provider: blackhole
     rate_limit:
-      - throughput: 5MB
+      - throughput: 2MB
         mode:
           type: average
           period: 1s

@@ -116,6 +116,7 @@ func (c *RunCommand) startUi(monitor *monitoring.Monitor) error {
 					fmt.Fprintf(writer, "        Over Average: %t\n", overAverage)
 					fmt.Fprintf(writer, "        Over: %t\n", over)
 					fmt.Fprintf(writer, "        Average: %s\n", bytefmt.ByteSize(mean))
+					fmt.Fprintf(writer, "        Current: %s\n", bytefmt.ByteSize(r.GetCurrent()))
 
 					if overAverage {
 						fmt.Fprintf(writer, "        Average Over By: %s\n", bytefmt.ByteSize(averageOverBy))
@@ -129,7 +130,7 @@ func (c *RunCommand) startUi(monitor *monitoring.Monitor) error {
 
 					r.Store.RLock()
 					for n, i := range r.Store.Items {
-						fmt.Fprintf(writer, "            %s: %d %s", n, i.Value, i.TTL)
+						fmt.Fprintf(writer, "            %s: %d %s\n", n, i.Value, i.TTL)
 					}
 					r.Store.RUnlock()
 				}
@@ -280,6 +281,8 @@ func createRateLimitRules(name string, rateLimits []config.RateLimit) []broker.R
 		bytes, _ := bytefmt.ToBytes(rateLimit.Throughput)
 		interval, _ := time.ParseDuration(rateLimit.Mode.Period)
 		rateLimiter := limiter.New(name, uint64(bytes), interval, interval, rateLimit.Mode.Duration)
+
+		_ = rateLimiter.Init()
 
 		rateLimitRules = append(rateLimitRules, broker.RateLimitRule{
 			RateLimiter:     rateLimiter,

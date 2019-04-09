@@ -121,7 +121,7 @@ func (r *RateLimiter) Increment(delta uint64) {
 }
 
 func (r *RateLimiter) IsOverLimit() (uint64, bool) {
-	rate := atomic.LoadUint64(&r.syncedCount) + atomic.LoadUint64(&r.currentCount)
+	rate := atomic.LoadUint64(&r.currentCount)
 
 	limit := atomic.LoadUint64(&r.Limit)
 
@@ -130,6 +130,10 @@ func (r *RateLimiter) IsOverLimit() (uint64, bool) {
 	}
 
 	return rate - limit, false
+}
+
+func (r *RateLimiter) GetCurrent() uint64 {
+	return atomic.LoadUint64(&r.currentCount)
 }
 
 func (r *RateLimiter) IsAverageOverLimit() (uint64, uint64, bool) {
