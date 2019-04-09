@@ -1,0 +1,9 @@
+sources:
+  source_one:
+    provider: dummy
+    targets:
+      - target_one
+
+targets:
+  target_one:
+    provider: blackhole

@@ -3,7 +3,10 @@ package cmd
 import (
 	"fmt"
 	"github.com/pm-connect/log-shipper/monitoring"
+	"github.com/pm-connect/log-shipper/source/dummy"
+	"github.com/pm-connect/log-shipper/target/blackhole"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 type RunCommand struct {
 	Config  string `help:"Specify the path to the config file."`
 	Workers int    `help:"Specify the number of works to run."`
+	Ui bool `help:"Start with the ui and api enabled."`
 }
 
 // NewRunCommand created a new instance of the RunCommand ready to use.
@@ -26,6 +30,7 @@ func NewRunCommand() *RunCommand {
 	return &RunCommand{
 		Config:  "./config.yaml",
 		Workers: 1,
+		Ui: false,
 	}
 }
 
@@ -43,10 +48,76 @@ func (c *RunCommand) Run() error {
 
 	logBroker := broker.NewBroker(c.Workers, monitor)
 
+	if c.Ui {
+		err := c.startUi(monitor)
+
+		if err != nil {
+			log.Fatalf("error starting ui: %s", err)
+		}
+	}
+
+	for name, source := range conf.Sources {
+		switch source.Provider {
+		case "dummy":
+			sourceManager.AddConnection(name, &dummy.Source{})
+		}
+	}
+
+	for name, target := range conf.Targets {
+		switch target.Provider {
+		case "blackhole":
+			targetManager.AddConnection(name, &blackhole.Target{})
+		}
+	}
+
 	err = c.startProcesses(conf, sourceManager, targetManager, logBroker)
 	if err != nil {
 		log.Fatalf("error starting processes: %s", err)
 	}
+
+	return nil
+}
+
+func (c *RunCommand) startUi(monitor *monitoring.Monitor) error {
+	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		for _, c := range monitor.ConnectionStore.Connections {
+			fmt.Fprintf(writer, "%s (%s)\n", c.Name, c.Type)
+			fmt.Fprintf(writer, "State: %s\n", c.State)
+			fmt.Fprintf(writer, "Inbound Messages: %d\n", c.Stats.GetMessagesInbound())
+			fmt.Fprintf(writer, "Outbound Messages: %d\n", c.Stats.GetMessagesOutbound())
+			fmt.Fprintf(writer, "Bytes Processed: %d\n", c.Stats.GetBytesProcessed())
+			fmt.Fprintf(writer, "Inflight Messages: %d\n", c.Stats.GetInFlightMessages())
+
+			if c.LastLog.Log != nil {
+				c.LastLog.Lock()
+				fmt.Fprintf(writer, "Last Log: %s %s\n", c.LastLog.Log.Level, c.LastLog.Log.Message)
+				c.LastLog.Unlock()
+			}
+
+			fmt.Fprintf(writer, "\n")
+		}
+
+		fmt.Fprintf(writer, "\n")
+
+		for _, p := range monitor.ProcessStore.Processes {
+			fmt.Fprintf(writer, "%s (%s)\n", p.Name, p.Type)
+			fmt.Fprintf(writer, "State: %s\n", p.State)
+			fmt.Fprintf(writer, "Inbound Messages: %d\n", p.Stats.GetMessagesInbound())
+			fmt.Fprintf(writer, "Outbound Messages: %d\n", p.Stats.GetMessagesOutbound())
+			fmt.Fprintf(writer, "Bytes Processed: %d\n", p.Stats.GetBytesProcessed())
+			fmt.Fprintf(writer, "Inflight Messages: %d\n", p.Stats.GetInFlightMessages())
+
+			if p.LastLog.Log != nil {
+				p.LastLog.Lock()
+				fmt.Fprintf(writer, "Last Log: %s %s\n", p.LastLog.Log.Level, p.LastLog.Log.Message)
+				p.LastLog.Unlock()
+			}
+
+			fmt.Fprintf(writer, "\n")
+		}
+	})
+
+	go http.ListenAndServe(":8888", nil)
 
 	return nil
 }

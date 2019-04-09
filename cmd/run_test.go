@@ -123,7 +123,9 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers, nil)
+	monitor := monitoring.NewMonitor(nil)
+
+	logBroker := broker.NewBroker(runCommand.Workers, monitor)
 
 	var wg sync.WaitGroup
 
@@ -185,7 +187,9 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers, nil)
+	monitor := monitoring.NewMonitor(nil)
+
+	logBroker := broker.NewBroker(runCommand.Workers, monitor)
 
 	var wg sync.WaitGroup
 
@@ -261,7 +265,9 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers, nil)
+	monitor := monitoring.NewMonitor(nil)
+
+	logBroker := broker.NewBroker(runCommand.Workers, monitor)
 
 	var wg sync.WaitGroup
 
@@ -331,7 +337,9 @@ targets:
 	sourceManager := connection.NewManager()
 	targetManager := connection.NewManager()
 
-	logBroker := broker.NewBroker(runCommand.Workers, nil)
+	monitor := monitoring.NewMonitor(nil)
+
+	logBroker := broker.NewBroker(runCommand.Workers, monitor)
 
 	var wg sync.WaitGroup
 
