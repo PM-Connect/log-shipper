@@ -10,6 +10,7 @@ type Connection struct {
 
 	Name string
 	Type string
+	Provider string
 
 	Stats Stats
 	State string
@@ -19,9 +20,10 @@ type Connection struct {
 	RateLimiters []*limiter.RateLimiter
 }
 
-func NewConnection(details *connection.Details, name string, connectionType string, rateLimiters []*limiter.RateLimiter) *Connection {
+func NewConnection(details *connection.Details, provider string, name string, connectionType string, rateLimiters []*limiter.RateLimiter) *Connection {
 	return &Connection{
 		Details:      details,
+		Provider:     provider,
 		Name:         name,
 		Type:         connectionType,
 		Stats:        Stats{},

@@ -58,6 +58,9 @@ func TestBroker_Start(t *testing.T) {
 	primarySource := Source{
 		ConnectionDetails: primarySourceDetails,
 		Targets:           []string{"primary"},
+		Config: config.Source{
+			Provider: "test",
+		},
 	}
 
 	primaryTargetRateLimiter := limiter.New("test", 10, time.Second, 1*time.Second, 10)

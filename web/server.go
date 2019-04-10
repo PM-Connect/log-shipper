@@ -20,7 +20,7 @@ func StartServer(port int, monitor *monitoring.Monitor, includeUi bool) {
 	)
 
 	// Routes...
-	e.Pre(middleware.RemoveTrailingSlash())
+	e.Pre(middleware.RemoveTrailingSlash(), middleware.CORS())
 
 	api.AddRoutes(e, monitor)
 

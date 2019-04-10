@@ -20,6 +20,7 @@ type Broker struct {
 
 type Source struct {
 	ConnectionDetails *connection.Details
+	Config 			  config.Source
 	Targets           []string
 }
 

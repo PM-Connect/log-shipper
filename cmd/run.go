@@ -160,6 +160,7 @@ func configureSources(sources map[string]config.Source, connectionDetails map[st
 			brokerSources[name] = &broker.Source{
 				ConnectionDetails: details,
 				Targets:           c.Targets,
+				Config:            c,
 			}
 		} else {
 			return nil, fmt.Errorf("unable to find connection for source '%s', check config", name)

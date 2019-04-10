@@ -7,6 +7,7 @@ import (
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
+	"time"
 )
 
 type Source struct {
@@ -68,6 +69,8 @@ func (s *Source) Start() (*connection.Details, error) {
 			if !ok {
 				return
 			}
+
+			time.Sleep(1 * time.Millisecond)
 		}
 	}()
 

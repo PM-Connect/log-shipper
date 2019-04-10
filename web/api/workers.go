@@ -8,18 +8,16 @@ import (
 )
 
 type GetWorkersResponse struct {
-	Workers []Worker
+	Workers []Worker `json:"workers"`
 }
 
 type Worker struct {
-	ID               string
-	State            string
-	BytesProcessed   string
-	InboundMessages  uint64
-	OutboundMessages uint64
-	InflightMessages uint64
-	DroppedMessages  uint64
-	ResentMessages   uint64
+	ID               string `json:"id"`
+	State            string `json:"state"`
+	BytesProcessed   string `json:"bytesProcessed"`
+	InboundMessages  uint64 `json:"inboundMessages"`
+	OutboundMessages uint64 `json:"outboundMessages"`
+	InflightMessages uint64 `json:"inflightMessages"`
 }
 
 func GetWorkersRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
@@ -40,7 +38,6 @@ func GetWorkersRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
 				InboundMessages:  c.Stats.GetMessagesInbound(),
 				OutboundMessages: c.Stats.GetMessagesOutbound(),
 				InflightMessages: c.Stats.GetInFlightMessages(),
-				ResentMessages:   c.Stats.GetResentMessages(),
 			}
 
 			workers = append(workers, worker)

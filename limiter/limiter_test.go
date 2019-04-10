@@ -35,15 +35,15 @@ func TestRateLimiter(t *testing.T) {
 
 	assert.Nil(t, err)
 
+	numberOfOverages := 0
+
 	for i := 0; i < 100; i++ {
 		rl.Increment(1)
 
 		_, over := rl.IsOverLimit()
 
-		if i < 5 {
-			assert.False(t, over)
-		} else {
-			assert.True(t, over)
+		if over {
+			numberOfOverages++
 		}
 
 		time.Sleep(10 * time.Millisecond)
@@ -52,6 +52,7 @@ func TestRateLimiter(t *testing.T) {
 	rl.Stop()
 
 	assert.Equal(t, 2, rl.Store.Len())
+	assert.NotZero(t, numberOfOverages)
 }
 
 func TestRateLimiter_Average(t *testing.T) {

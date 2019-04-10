@@ -9,30 +9,32 @@ import (
 )
 
 type GetTargetsResponse struct {
-	Targets []Target
+	Targets []Target `json:"targets"`
 }
 
 type Target struct {
-	ID               string
-	Connection       string
-	State            string
-	BytesProcessed   string
-	InboundMessages  uint64
-	OutboundMessages uint64
-	InflightMessages uint64
-	DroppedMessages  uint64
-	ResentMessages   uint64
-	RateLimiters     []RateLimiter
+	ID               string `json:"id"`
+	Connection       string `json:"connection"`
+	State            string `json:"state"`
+	Provider         string `json:"provider"`
+	BytesProcessed   string `json:"bytesProcessed"`
+	InboundMessages  uint64 `json:"inboundMessages"`
+	OutboundMessages uint64 `json:"outboundMessages"`
+	InflightMessages uint64 `json:"inflightMessages"`
+	DroppedMessages  uint64 `json:"droppedMessages"`
+	ResentMessages   uint64 `json:"resentMessages"`
+	RateLimiters     []RateLimiter `json:"rateLimiters"`
 }
 
 type RateLimiter struct {
-	ID              string
-	Limit           string
-	Average         string
-	Current         string
-	AverageBreached bool
-	CurrentBreached bool
-	StoredMetrics   int
+	ID              string `json:"id"`
+	Limit           string `json:"limit"`
+	Average         string `json:"average"`
+	Current         string `json:"current"`
+	AverageBreached bool `json:"averageBreached"`
+	CurrentBreached bool `json:"currentBreached"`
+	StoredMetrics   int `json:"storedMetrics"`
+	Interval        string `json:"interval"`
 }
 
 func GetTargetsRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
@@ -50,6 +52,7 @@ func GetTargetsRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
 				ID:               c.Name,
 				Connection:       fmt.Sprintf("%s:%d", c.Details.Host, c.Details.Port),
 				State:            c.State,
+				Provider:         c.Provider,
 				BytesProcessed:   bytefmt.ByteSize(c.Stats.GetBytesProcessed()),
 				InboundMessages:  c.Stats.GetMessagesInbound(),
 				OutboundMessages: c.Stats.GetMessagesOutbound(),
@@ -69,6 +72,7 @@ func GetTargetsRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
 						Current:         bytefmt.ByteSize(r.GetCurrent()),
 						AverageBreached: averageBreached,
 						CurrentBreached: currentBreached,
+						Interval: r.Interval.String(),
 						StoredMetrics:   r.Store.Len(),
 					})
 				}

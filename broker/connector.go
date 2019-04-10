@@ -153,6 +153,7 @@ func (t *TargetConnector) Handle() {
 
 	monitoringConnection := monitoring.NewConnection(
 		t.Target.ConnectionDetails,
+		t.Target.Config.Provider,
 		t.Name,
 		"target",
 		rateLimiters,
@@ -180,7 +181,9 @@ func (t *TargetConnector) Handle() {
 
 	if !ready {
 		monitoringConnection.SetState("dead")
-		t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, "did not receive HELLO from server")
+		if t.Manager.Monitor != nil {
+			t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, "did not receive HELLO from server")
+		}
 	}
 
 	reader := bufio.NewReader(conn)
@@ -198,7 +201,9 @@ ReceiveLoop:
 			l, err := message.ProtobufToBroker(data)
 			if err != nil {
 				monitoringConnection.SetState("dead")
-				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				if t.Manager.Monitor != nil {
+					t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				}
 				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
@@ -208,20 +213,26 @@ ReceiveLoop:
 			rawData, err := message.ToProtobuf(targetMessage)
 			if err != nil {
 				monitoringConnection.SetState("dead")
-				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				if t.Manager.Monitor != nil {
+					t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				}
 				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
 
 			if passed := t.handleRateLimiting(l, monitoringConnection); !passed {
-				t.Manager.Monitor.LogForConnection(monitoringConnection, log.InfoLevel, "log failed rate limit check, waiting for next message")
+				if t.Manager.Monitor != nil {
+					t.Manager.Monitor.LogForConnection(monitoringConnection, log.InfoLevel, "log failed rate limit check, waiting for next message")
+				}
 				continue ReceiveLoop
 			}
 
 			_, err = protocol.WriteNewMessage(conn, protocol.CommandTargetLog, string(rawData))
 			if err != nil {
 				monitoringConnection.SetState("dead")
-				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				if t.Manager.Monitor != nil {
+					t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				}
 				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
@@ -232,7 +243,9 @@ ReceiveLoop:
 			if !ok {
 				t.Manager.CompleteMessage()
 				monitoringConnection.SetState("dead")
-				t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				if t.Manager.Monitor != nil {
+					t.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				}
 				monitoringConnection.Stats.IncrementDroppedMessages(1)
 				return
 			}
@@ -270,11 +283,15 @@ func (t *TargetConnector) handleRateLimiting(m *message.BrokerMessage, monitorin
 				rawData, err := message.ToProtobuf(m)
 				if err != nil {
 					monitoringConnection.SetState("dead")
-					t.Manager.Monitor.LogForConnection(monitoringConnection, log.ErrorLevel, err.Error())
+					if t.Manager.Monitor != nil {
+						t.Manager.Monitor.LogForConnection(monitoringConnection, log.ErrorLevel, err.Error())
+					}
 					return false
 				}
 
-				t.Manager.Monitor.LogForConnection(monitoringConnection, log.InfoLevel, fmt.Sprintf("rate limit reached, falling back to target \"%s\"", rule.BreachBehaviour.Target))
+				if t.Manager.Monitor != nil {
+					t.Manager.Monitor.LogForConnection(monitoringConnection, log.InfoLevel, fmt.Sprintf("rate limit reached, falling back to target \"%s\"", rule.BreachBehaviour.Target))
+				}
 
 				err = t.Manager.SendToTarget(rule.BreachBehaviour.Target, rawData)
 
@@ -282,7 +299,9 @@ func (t *TargetConnector) handleRateLimiting(m *message.BrokerMessage, monitorin
 				monitoringConnection.Stats.IncrementResentMessages(uint64(1))
 
 				if err != nil {
-					t.Manager.Monitor.LogForConnection(monitoringConnection, log.ErrorLevel, err.Error())
+					if t.Manager.Monitor != nil {
+						t.Manager.Monitor.LogForConnection(monitoringConnection, log.ErrorLevel, err.Error())
+					}
 				}
 
 				return false
@@ -303,6 +322,7 @@ func (s *SourceConnector) Handle() {
 
 	monitoringConnection := monitoring.NewConnection(
 		s.Source.ConnectionDetails,
+		s.Source.Config.Provider,
 		s.Name,
 		"source",
 		nil,
@@ -317,14 +337,18 @@ func (s *SourceConnector) Handle() {
 	conn, err := connection.OpenTCPConnection(s.Source.ConnectionDetails.Host, s.Source.ConnectionDetails.Port)
 	if err != nil {
 		monitoringConnection.SetState("dead")
-		s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+		if s.Manager.Monitor != nil {
+			s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+		}
 		return
 	}
 
 	ready := protocol.SendHello(conn)
 	if !ready {
 		monitoringConnection.SetState("dead")
-		s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, "failed to send hello to source")
+		if s.Manager.Monitor != nil {
+			s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, "failed to send hello to source")
+		}
 		return
 	}
 
@@ -354,7 +378,9 @@ func (s *SourceConnector) Handle() {
 				sourceMsg, err := message.ProtobufToSource(msg.Data)
 				if err != nil {
 					monitoringConnection.SetState("dead")
-					s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+					if s.Manager.Monitor != nil {
+						s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+					}
 					return
 				}
 
@@ -363,7 +389,9 @@ func (s *SourceConnector) Handle() {
 				rawData, err := message.ToProtobuf(l)
 				if err != nil {
 					monitoringConnection.SetState("dead")
-					s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+					if s.Manager.Monitor != nil {
+						s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+					}
 					return
 				}
 
@@ -380,7 +408,9 @@ func (s *SourceConnector) Handle() {
 				return
 			} else if err != nil {
 				monitoringConnection.SetState("dead")
-				s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				if s.Manager.Monitor != nil {
+					s.Manager.Monitor.LogForConnection(monitoringConnection, log.FatalLevel, err.Error())
+				}
 				return
 			}
 		case <-s.StopChan:

@@ -25,7 +25,7 @@ targets:
   target_three:
     provider: blackhole
     rate_limit:
-      - throughput: 180KB
+      - throughput: 45KB
         mode:
           type: average
           period: 1s
@@ -34,6 +34,14 @@ targets:
           action: fallback
           target: fallback
           alert: ERROR
+      - throughput: 40KB
+        mode:
+          type: average
+          period: 1s
+          duration: 10
+        breach_behaviour:
+          action: ~
+          alert: WARN
   fallback:
     provider: blackhole
     rate_limit:
@@ -44,4 +52,4 @@ targets:
           duration: 10
         breach_behaviour:
           action: discard
-          alert: WARN
+          alert: ERROR

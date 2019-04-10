@@ -9,19 +9,19 @@ import (
 )
 
 type GetSourcesResponse struct {
-	Sources []Source
+	Sources []Source `json:"sources"`
 }
 
 type Source struct {
-	ID               string
-	Connection       string
-	State            string
-	BytesProcessed   string
-	InboundMessages  uint64
-	OutboundMessages uint64
-	InflightMessages uint64
-	DroppedMessages  uint64
-	ResentMessages   uint64
+	ID               string `json:"id"`
+	Connection       string `json:"connection"`
+	State            string `json:"state"`
+	Provider         string `json:"provider"`
+	BytesProcessed   string `json:"bytesProcessed"`
+	InboundMessages  uint64 `json:"inboundMessages"`
+	OutboundMessages uint64 `json:"outboundMessages"`
+	InflightMessages uint64 `json:"inflightMessages"`
+	DroppedMessages  uint64 `json:"droppedMessages"`
 }
 
 func GetSourcesRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
@@ -39,11 +39,11 @@ func GetSourcesRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
 				ID:               c.Name,
 				Connection:       fmt.Sprintf("%s:%d", c.Details.Host, c.Details.Port),
 				State:            c.State,
+				Provider:         c.Provider,
 				BytesProcessed:   bytefmt.ByteSize(c.Stats.GetBytesProcessed()),
 				InboundMessages:  c.Stats.GetMessagesInbound(),
 				OutboundMessages: c.Stats.GetMessagesOutbound(),
 				InflightMessages: c.Stats.GetInFlightMessages(),
-				ResentMessages:   c.Stats.GetResentMessages(),
 			}
 
 			sources = append(sources, source)
