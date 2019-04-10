@@ -1,2 +1,3 @@
 *.prof
 cmd.test
+*-packr.go

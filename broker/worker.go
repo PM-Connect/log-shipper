@@ -32,7 +32,7 @@ func (m *WorkerManager) Start(workers int, receiver chan []byte, connectorManage
 	for i := 0; i < workers; i++ {
 		m.WaitGroup.Add(1)
 
-		processMonitor := monitoring.NewProcess(fmt.Sprintf("worker %d", i), "worker")
+		processMonitor := monitoring.NewProcess(fmt.Sprintf("worker_%d", i), "worker")
 
 		processMonitor.SetState("starting")
 

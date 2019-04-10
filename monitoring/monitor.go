@@ -34,7 +34,7 @@ type LastLog struct {
 type LogItem struct {
 	Level   log.Level
 	Message string
-	Time time.Time
+	Time    time.Time
 }
 
 func NewMonitor(logger *log.Logger) *Monitor {

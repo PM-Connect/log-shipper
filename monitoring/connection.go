@@ -21,10 +21,10 @@ type Connection struct {
 
 func NewConnection(details *connection.Details, name string, connectionType string, rateLimiters []*limiter.RateLimiter) *Connection {
 	return &Connection{
-		Details: details,
-		Name:    name,
-		Type:    connectionType,
-		Stats:   Stats{},
+		Details:      details,
+		Name:         name,
+		Type:         connectionType,
+		Stats:        Stats{},
 		RateLimiters: rateLimiters,
 	}
 }

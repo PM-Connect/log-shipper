@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/pm-connect/log-shipper/monitoring"
-	"github.com/pm-connect/log-shipper/source/dummy"
-	"github.com/pm-connect/log-shipper/target/blackhole"
+	"github.com/pm-connect/log-shipper/web"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"time"
 
@@ -15,6 +12,9 @@ import (
 	"github.com/pm-connect/log-shipper/config"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/limiter"
+	"github.com/pm-connect/log-shipper/monitoring"
+	"github.com/pm-connect/log-shipper/source/dummy"
+	"github.com/pm-connect/log-shipper/target/blackhole"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,6 +22,7 @@ import (
 type RunCommand struct {
 	Config  string `help:"Specify the path to the config file."`
 	Workers int    `help:"Specify the number of works to run."`
+	Web     bool   `help:"Start the web server. If UI is on, this is forced to true."`
 	Ui      bool   `help:"Start with the ui and api enabled."`
 	Port    int    `help:"The port to run the ui and api on."`
 }
@@ -31,8 +32,9 @@ func NewRunCommand() *RunCommand {
 	return &RunCommand{
 		Config:  "./config.yaml",
 		Workers: 1,
+		Web:     true,
 		Ui:      false,
-		Port: 8888,
+		Port:    8888,
 	}
 }
 
@@ -52,12 +54,8 @@ func (c *RunCommand) Run() error {
 
 	logBroker := broker.NewBroker(c.Workers, monitor)
 
-	if c.Ui {
-		err := c.startUi(monitor)
-
-		if err != nil {
-			log.Fatalf("error starting ui: %s", err)
-		}
+	if c.Web || c.Ui {
+		c.startHttp(monitor)
 	}
 
 	for name, source := range conf.Sources {
@@ -82,91 +80,8 @@ func (c *RunCommand) Run() error {
 	return nil
 }
 
-func (c *RunCommand) startUi(monitor *monitoring.Monitor) error {
-	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
-		for _, c := range monitor.ConnectionStore.Connections {
-			fmt.Fprintf(writer, "%s (%s)\n", c.Name, c.Type)
-			fmt.Fprintf(writer, "State: %s\n", c.State)
-			fmt.Fprintf(writer, "Inbound Messages: %d\n", c.Stats.GetMessagesInbound())
-			fmt.Fprintf(writer, "Outbound Messages: %d\n", c.Stats.GetMessagesOutbound())
-			fmt.Fprintf(writer, "Bytes Processed: %s\n", bytefmt.ByteSize(c.Stats.GetBytesProcessed()))
-			fmt.Fprintf(writer, "Inflight Messages: %d\n", c.Stats.GetInFlightMessages())
-			fmt.Fprintf(writer, "Dropped Messages: %d\n", c.Stats.GetDroppedMessages())
-			fmt.Fprintf(writer, "Resent Messages: %d\n", c.Stats.GetResentMessages())
-
-			if c.LastLog.Log != nil {
-				c.LastLog.Lock()
-				fmt.Fprint(writer, "Last Log:\n")
-				fmt.Fprintf(writer, "    Level: %s\n", c.LastLog.Log.Level)
-				fmt.Fprintf(writer, "    Message: %s\n", c.LastLog.Log.Message)
-				fmt.Fprintf(writer, "    Time: %s\n", c.LastLog.Log.Time)
-				c.LastLog.Unlock()
-			}
-
-			if len(c.RateLimiters) > 0 {
-				fmt.Fprint(writer, "Rate Limiters:\n")
-
-				for i, r := range c.RateLimiters {
-					averageOverBy, mean, overAverage := r.IsAverageOverLimit()
-					overBy, over := r.IsOverLimit()
-
-
-					fmt.Fprintf(writer, "    Limiter %d:\n", i)
-					fmt.Fprintf(writer, "        Limit: %s\n", bytefmt.ByteSize(r.Limit))
-					fmt.Fprintf(writer, "        Over Average: %t\n", overAverage)
-					fmt.Fprintf(writer, "        Over: %t\n", over)
-					fmt.Fprintf(writer, "        Average: %s\n", bytefmt.ByteSize(mean))
-					fmt.Fprintf(writer, "        Current: %s\n", bytefmt.ByteSize(r.GetCurrent()))
-
-					if overAverage {
-						fmt.Fprintf(writer, "        Average Over By: %s\n", bytefmt.ByteSize(averageOverBy))
-					}
-
-					if over {
-						fmt.Fprintf(writer, "        Over By: %s\n", bytefmt.ByteSize(overBy))
-					}
-
-					fmt.Fprintf(writer, "        Items (%d):\n", r.Store.Len())
-
-					r.Store.RLock()
-					for n, i := range r.Store.Items {
-						fmt.Fprintf(writer, "            %s: %d %s\n", n, i.Value, i.TTL)
-					}
-					r.Store.RUnlock()
-				}
-			}
-
-			fmt.Fprintf(writer, "\n")
-		}
-
-		fmt.Fprintf(writer, "\n")
-
-		for _, p := range monitor.ProcessStore.Processes {
-			fmt.Fprintf(writer, "%s (%s)\n", p.Name, p.Type)
-			fmt.Fprintf(writer, "State: %s\n", p.State)
-			fmt.Fprintf(writer, "Inbound Messages: %d\n", p.Stats.GetMessagesInbound())
-			fmt.Fprintf(writer, "Outbound Messages: %d\n", p.Stats.GetMessagesOutbound())
-			fmt.Fprintf(writer, "Bytes Processed: %s\n", bytefmt.ByteSize(p.Stats.GetBytesProcessed()))
-			fmt.Fprintf(writer, "Inflight Messages: %d\n", p.Stats.GetInFlightMessages())
-			fmt.Fprintf(writer, "Dropped Messages: %d\n", p.Stats.GetDroppedMessages())
-			fmt.Fprintf(writer, "Resent Messages: %d\n", p.Stats.GetResentMessages())
-
-			if p.LastLog.Log != nil {
-				p.LastLog.Lock()
-				fmt.Fprint(writer, "Last Log:\n")
-				fmt.Fprintf(writer, "    Level: %s\n", p.LastLog.Log.Level)
-				fmt.Fprintf(writer, "    Message: %s\n", p.LastLog.Log.Message)
-				fmt.Fprintf(writer, "    Time: %s\n", p.LastLog.Log.Time)
-				p.LastLog.Unlock()
-			}
-
-			fmt.Fprintf(writer, "\n")
-		}
-	})
-
-	go http.ListenAndServe(fmt.Sprintf(":%d", c.Port), nil)
-
-	return nil
+func (c *RunCommand) startHttp(monitor *monitoring.Monitor) {
+	go web.StartServer(c.Port, monitor, c.Ui)
 }
 
 // loadConfig loads and returns the config from the configured file.
