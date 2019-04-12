@@ -70,7 +70,7 @@ func (s *Source) Start() (*connection.Details, error) {
 				return
 			}
 
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
 	}()
 

@@ -2,9 +2,13 @@ package api
 
 import (
 	"code.cloudfoundry.org/bytefmt"
+	"encoding/json"
+	"fmt"
 	"github.com/labstack/echo"
 	"github.com/pm-connect/log-shipper/monitoring"
+	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 type GetWorkersResponse struct {
@@ -21,8 +25,38 @@ type Worker struct {
 }
 
 func GetWorkersRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
+	httpClient := &http.Client{
+		Timeout: time.Second * 1,
+	}
+
 	return func(context echo.Context) error {
 		response := GetWorkersResponse{}
+
+		if len(context.QueryParam("node")) > 0 {
+			addr := context.QueryParam("node")
+
+			resp, err := httpClient.Get(fmt.Sprintf("http://%s/api/workers", addr))
+
+			if err != nil {
+				return context.JSON(http.StatusInternalServerError, err)
+			}
+
+			defer resp.Body.Close()
+
+			body, err := ioutil.ReadAll(resp.Body)
+
+			if err != nil {
+				return context.JSON(http.StatusInternalServerError, err)
+			}
+
+			err = json.Unmarshal(body, &response)
+
+			if err != nil {
+				return context.JSON(http.StatusInternalServerError, err)
+			}
+
+			return context.JSON(http.StatusOK, response)
+		}
 
 		var workers []Worker
 

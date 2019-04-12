@@ -1,10 +1,21 @@
 <template>
   <v-container>
-    <h1>Monitoring</h1>
+    <v-layout wrap align-center row justify-space-between>
+      <h1>Monitoring</h1>
+      <v-flex xs12 sm4 d-flex v-if="nodes.length">
+        <v-spacer></v-spacer>
+        <v-select
+          v-model="activeNode"
+          :items="nodes"
+          item-text="address"
+          class="align-end"
+        ></v-select>
+      </v-flex>
+    </v-layout>
 
     <v-container class="pa-0 pb-4" fluid grid-list-md>
       <v-data-iterator
-        :items="sources"
+        :items="currentSources"
         hide-actions
         content-tag="v-layout"
         row
@@ -26,7 +37,10 @@
               <v-list dense>
                 <v-list-tile>
                   <v-list-tile-content>State:</v-list-tile-content>
-                  <v-list-tile-content class="align-end">
+                  <v-list-tile-content
+                    :class="{'red--text': props.item.state === 'dead' || props.item.state === 'finished', 'green--text': props.item.state !== 'dead' && props.item.state !== 'finished'}"
+                    class="align-end"
+                  >
                     {{ props.item.state }}
                   </v-list-tile-content>
                 </v-list-tile>
@@ -62,7 +76,10 @@
                 </v-list-tile>
                 <v-list-tile>
                   <v-list-tile-content>Dropped Messages:</v-list-tile-content>
-                  <v-list-tile-content class="align-end">
+                  <v-list-tile-content
+                    :class="{'red--text': props.item.droppedMessages > 0, 'green--text': props.item.droppedMessages === 0}"
+                    class="align-end"
+                  >
                     {{ props.item.droppedMessages }}
                   </v-list-tile-content>
                 </v-list-tile>
@@ -75,7 +92,7 @@
 
     <v-container class="pa-0 pb-4" fluid grid-list-md>
       <v-data-iterator
-        :items="targets"
+        :items="currentTargets"
         hide-actions
         content-tag="v-layout"
         row
@@ -97,7 +114,10 @@
               <v-list dense>
                 <v-list-tile>
                   <v-list-tile-content>State:</v-list-tile-content>
-                  <v-list-tile-content class="align-end">
+                  <v-list-tile-content
+                    :class="{'red--text': props.item.state === 'dead' || props.item.state === 'finished', 'green--text': props.item.state !== 'dead' && props.item.state !== 'finished'}"
+                    class="align-end"
+                  >
                     {{ props.item.state }}
                   </v-list-tile-content>
                 </v-list-tile>
@@ -133,7 +153,10 @@
                 </v-list-tile>
                 <v-list-tile>
                   <v-list-tile-content>Dropped Messages:</v-list-tile-content>
-                  <v-list-tile-content class="align-end">
+                  <v-list-tile-content
+                    :class="{'red--text': props.item.droppedMessages > 0, 'green--text': props.item.droppedMessages === 0}"
+                    class="align-end"
+                  >
                     {{ props.item.droppedMessages }}
                   </v-list-tile-content>
                 </v-list-tile>
@@ -191,7 +214,7 @@
 
     <v-container class="pa-0 pb-4" fluid grid-list-md>
       <v-data-iterator
-        :items="workers"
+        :items="currentWorkers"
         hide-actions
         content-tag="v-layout"
         row
@@ -213,7 +236,10 @@
               <v-list dense>
                 <v-list-tile>
                   <v-list-tile-content>State:</v-list-tile-content>
-                  <v-list-tile-content class="align-end">
+                  <v-list-tile-content
+                    :class="{'red--text': props.item.state === 'dead' || props.item.state === 'finished', 'green--text': props.item.state !== 'dead' && props.item.state !== 'finished'}"
+                    class="align-end"
+                  >
                     {{ props.item.state }}
                   </v-list-tile-content>
                 </v-list-tile>
@@ -257,6 +283,10 @@ export default {
     sources: [],
     targets: [],
     workers: [],
+    nodes: [],
+    nodeData: {},
+    currentNode: "",
+    currentData: {},
   }),
   mounted() {
     let baseUrl = '/api';
@@ -267,23 +297,98 @@ export default {
 
     this.loadData(baseUrl);
   },
+  computed: {
+    activeNode: {
+      set(value) {
+        this.currentNode = value;
+        this.currentData = this.nodeData[value];
+      },
+      get() {
+        return this.currentNode;
+      }
+    },
+    currentSources() {
+      if (this.currentNode.length === 0) {
+        return this.sources;
+      }
+
+      return this.currentData.sources;
+    },
+    currentTargets() {
+      if (this.currentNode.length === 0) {
+        return this.targets;
+      }
+
+      return this.currentData.targets;
+    },
+    currentWorkers() {
+      if (this.currentNode.length === 0) {
+        return this.workers;
+      }
+
+      return this.currentData.workers;
+    },
+  },
   methods: {
     loadData(baseUrl) {
-      fetch(`${baseUrl}/workers`).then(response => response.json()).then((data) => {
-        this.workers = data.workers;
-      });
+      fetch(`${baseUrl}/nodes`).then(response => response.json()).then((data) => {
+        if (this.nodes.length === 0) {
+          this.nodes = [];
 
-      fetch(`${baseUrl}/sources`).then(response => response.json()).then((data) => {
-        this.sources = data.sources;
-      });
+          fetch(`${baseUrl}/workers`).then(response => response.json()).then((data) => {
+            this.workers = data.workers;
+          });
 
-      fetch(`${baseUrl}/targets`).then(response => response.json()).then((data) => {
-        this.targets = data.targets;
-      });
+          fetch(`${baseUrl}/sources`).then(response => response.json()).then((data) => {
+            this.sources = data.sources;
+          });
 
-      setTimeout(() => {
-        this.loadData(baseUrl);
-      }, 1000);
+          fetch(`${baseUrl}/targets`).then(response => response.json()).then((data) => {
+            this.targets = data.targets;
+          });
+        } else {
+          this.nodes = data.nodes;
+
+          data.nodes.forEach((node) => {
+            if (this.currentNode.length > 0 && this.currentNode !== node.address) {
+              return
+            }
+            if (!this.nodeData[node.address]) {
+              this.nodeData[node.address] = {
+                workers: [],
+                targets: [],
+                sources: [],
+              };
+            }
+
+            let promise1 = fetch(`${baseUrl}/workers?node=${node.address}`).then(response => response.json()).then((data) => {
+              this.nodeData[node.address].workers = data.workers;
+            });
+
+            let promise2 = fetch(`${baseUrl}/sources?node=${node.address}`).then(response => response.json()).then((data) => {
+              this.nodeData[node.address].sources = data.sources;
+            });
+
+            let promise3 = fetch(`${baseUrl}/targets?node=${node.address}`).then(response => response.json()).then((data) => {
+              this.nodeData[node.address].targets = data.targets;
+            });
+
+            Promise.all([promise1, promise2, promise3]).then(() => {
+              if (this.currentNode.length === 0) {
+                this.currentNode = node.address;
+              }
+
+              if (this.currentNode.length > 0 && this.currentNode === node.address) {
+                this.currentData = this.nodeData[node.address];
+              }
+            })
+          });
+        }
+
+        setTimeout(() => {
+          this.loadData(baseUrl);
+        }, 1000);
+      });
     },
   },
 };

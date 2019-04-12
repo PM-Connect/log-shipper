@@ -1,3 +1,4 @@
 *.prof
 cmd.test
 *-packr.go
+consul/

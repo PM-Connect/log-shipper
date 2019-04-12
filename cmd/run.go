@@ -25,6 +25,8 @@ type RunCommand struct {
 	Web     bool   `help:"Start the web server. If UI is on, this is forced to true."`
 	Ui      bool   `help:"Start with the ui and api enabled."`
 	Port    int    `help:"The port to run the ui and api on."`
+	Consul  string `help:"The address to consul for clustering."`
+	ConsulServiceName string `help:"The name of the log-shipper service in consul."`
 }
 
 // NewRunCommand created a new instance of the RunCommand ready to use.
@@ -35,6 +37,8 @@ func NewRunCommand() *RunCommand {
 		Web:     true,
 		Ui:      false,
 		Port:    8888,
+		Consul:  "",
+		ConsulServiceName: "log-shipper",
 	}
 }
 
@@ -81,7 +85,7 @@ func (c *RunCommand) Run() error {
 }
 
 func (c *RunCommand) startHttp(monitor *monitoring.Monitor) {
-	go web.StartServer(c.Port, monitor, c.Ui)
+	go web.StartServer(c.Port, monitor, c.Ui, c.Consul, c.ConsulServiceName)
 }
 
 // loadConfig loads and returns the config from the configured file.
