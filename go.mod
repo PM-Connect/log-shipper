@@ -9,6 +9,7 @@ require (
 	github.com/gobuffalo/packr v1.24.1
 	github.com/golang/protobuf v1.3.1
 	github.com/hashicorp/consul/api v1.0.1
+	github.com/hashicorp/nomad/api v0.0.0-20190415091451-66b6583ae502
 	github.com/jaffee/commandeer v0.1.0
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/gommon v0.2.8 // indirect

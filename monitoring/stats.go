@@ -20,6 +20,7 @@ type Stats struct {
 	messagesOutboundCounter prometheus.Counter
 	droppedMessagesCounter prometheus.Counter
 	resentMessagesCounter prometheus.Counter
+	messagesInFlightGauge prometheus.Gauge
 }
 
 func NewStats(metricPrefix string, labels prometheus.Labels) *Stats {
@@ -47,6 +48,11 @@ func NewStats(metricPrefix string, labels prometheus.Labels) *Stats {
 		resentMessagesCounter: promauto.NewCounter(prometheus.CounterOpts{
 			Name: fmt.Sprintf("logshipper_%sresent_messages", metricPrefix),
 			Help: "The total number of messages resent/re-queued.",
+			ConstLabels: labels,
+		}),
+		messagesInFlightGauge: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: fmt.Sprintf("logshipper_%smessages_inflight", metricPrefix),
+			Help: "The total number of messages in flight/being processed.",
 			ConstLabels: labels,
 		}),
 	}
@@ -79,10 +85,12 @@ func (s *Stats) IncrementResentMessages(delta uint64) {
 
 func (s *Stats) AddInFlightMessage() {
 	atomic.AddUint64(&s.MessagesInFlight, uint64(1))
+	s.messagesInFlightGauge.Inc()
 }
 
 func (s *Stats) RemoveInFlightMessage() {
 	atomic.AddUint64(&s.MessagesInFlight, ^uint64(0))
+	s.messagesInFlightGauge.Dec()
 }
 
 func (s *Stats) GetBytesProcessed() uint64 {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/pm-connect/log-shipper/source/nomad"
 	"github.com/pm-connect/log-shipper/web"
 	"io/ioutil"
 	"os"
@@ -66,6 +67,10 @@ func (c *RunCommand) Run() error {
 		switch source.Provider {
 		case "dummy":
 			sourceManager.AddConnection(name, &dummy.Source{})
+		case "nomad":
+			sourceManager.AddConnection(name, &nomad.Source{
+				Config: source.Config,
+			})
 		}
 	}
 

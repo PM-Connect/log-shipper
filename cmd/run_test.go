@@ -10,6 +10,7 @@ import (
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/monitoring"
 	"github.com/pm-connect/log-shipper/protocol"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
@@ -94,6 +95,8 @@ targets:
 		assert.Equal(t, "worker", p.Type)
 		assert.Nil(t, p.LastLog.Log)
 	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 }
 
 func TestRunCommand_StartMultipleSourcesAndSingleTarget(t *testing.T) {
@@ -159,6 +162,8 @@ targets:
 		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 }
 
 func TestRunCommand_StartSingleSourceAndMultipleTargets(t *testing.T) {
@@ -234,6 +239,8 @@ targets:
 		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 }
 
 func TestRunCommand_StartMultipleSourcesAndMultipleTargets(t *testing.T) {
@@ -314,6 +321,8 @@ targets:
 		assert.Equal(t, []byte("Test"), l.SourceMessage.Message)
 		assert.Equal(t, map[string]string{"some-key": "some-value"}, l.SourceMessage.Meta)
 	}
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 }
 
 func benchmarkRunCommand(messages int) {
