@@ -16,16 +16,16 @@ type GetTargetsResponse struct {
 }
 
 type Target struct {
-	ID               string `json:"id"`
-	Connection       string `json:"connection"`
-	State            string `json:"state"`
-	Provider         string `json:"provider"`
-	BytesProcessed   string `json:"bytesProcessed"`
-	InboundMessages  uint64 `json:"inboundMessages"`
-	OutboundMessages uint64 `json:"outboundMessages"`
-	InflightMessages uint64 `json:"inflightMessages"`
-	DroppedMessages  uint64 `json:"droppedMessages"`
-	ResentMessages   uint64 `json:"resentMessages"`
+	ID               string        `json:"id"`
+	Connection       string        `json:"connection"`
+	State            string        `json:"state"`
+	Provider         string        `json:"provider"`
+	BytesProcessed   string        `json:"bytesProcessed"`
+	InboundMessages  uint64        `json:"inboundMessages"`
+	OutboundMessages uint64        `json:"outboundMessages"`
+	InflightMessages uint64        `json:"inflightMessages"`
+	DroppedMessages  uint64        `json:"droppedMessages"`
+	ResentMessages   uint64        `json:"resentMessages"`
 	RateLimiters     []RateLimiter `json:"rateLimiters"`
 }
 
@@ -34,9 +34,9 @@ type RateLimiter struct {
 	Limit           string `json:"limit"`
 	Average         string `json:"average"`
 	Current         string `json:"current"`
-	AverageBreached bool `json:"averageBreached"`
-	CurrentBreached bool `json:"currentBreached"`
-	StoredMetrics   int `json:"storedMetrics"`
+	AverageBreached bool   `json:"averageBreached"`
+	CurrentBreached bool   `json:"currentBreached"`
+	StoredMetrics   int    `json:"storedMetrics"`
 	Interval        string `json:"interval"`
 }
 
@@ -105,7 +105,7 @@ func GetTargetsRoute(monitor *monitoring.Monitor) echo.HandlerFunc {
 						Current:         bytefmt.ByteSize(r.GetCurrent()),
 						AverageBreached: averageBreached,
 						CurrentBreached: currentBreached,
-						Interval: r.Interval.String(),
+						Interval:        r.Interval.String(),
 						StoredMetrics:   r.Store.Len(),
 					})
 				}

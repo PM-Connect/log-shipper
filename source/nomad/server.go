@@ -49,16 +49,16 @@ func (s *Source) Start() (*connection.Details, error) {
 			panic(err)
 		}
 
-		receiver := make(chan []byte)
+		receiver := make(chan *message.SourceMessage)
 
 		defer close(receiver)
 
 		go nomadClient.ReceiveLogs(receiver)
 
-		for data := range receiver {
-			log := &message.SourceMessage{
-				Message: data,
-			}
+		for log := range receiver {
+
+			fmt.Printf("%+v\n\n", log)
+			continue
 
 			data, err := message.ToProtobuf(log)
 
@@ -75,7 +75,7 @@ func (s *Source) Start() (*connection.Details, error) {
 			ok := protocol.WaitForOk(reader)
 
 			if !ok {
-				return
+				break
 			}
 		}
 	}()

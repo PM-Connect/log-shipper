@@ -10,8 +10,8 @@ import (
 type Connection struct {
 	Details *connection.Details
 
-	Name string
-	Type string
+	Name     string
+	Type     string
 	Provider string
 
 	Stats *Stats
@@ -25,9 +25,9 @@ type Connection struct {
 func NewConnection(details *connection.Details, provider string, name string, connectionType string, rateLimiters []*limiter.RateLimiter) *Connection {
 	stats := NewStats("connection_", prometheus.Labels{
 		"connection": fmt.Sprintf("%s:%d", details.Host, details.Port),
-		"name": name,
-		"type": connectionType,
-		"provider": provider,
+		"name":       name,
+		"type":       connectionType,
+		"provider":   provider,
 	})
 
 	return &Connection{

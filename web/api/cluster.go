@@ -12,10 +12,10 @@ type GetNodesResponse struct {
 }
 
 type Node struct {
-	ID string `json:"id"`
+	ID      string `json:"id"`
 	Address string `json:"address"`
-	Host string `json:"host"`
-	Port int `json:"port"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
 }
 
 func GetNodesRoute(consulAddr string, serviceName string) echo.HandlerFunc {
@@ -46,10 +46,10 @@ func GetNodesRoute(consulAddr string, serviceName string) echo.HandlerFunc {
 
 		for _, service := range services {
 			node := Node{
-				ID: service.ServiceID,
+				ID:      service.ServiceID,
 				Address: fmt.Sprintf("%s:%d", service.ServiceAddress, service.ServicePort),
-				Host: service.ServiceAddress,
-				Port: service.ServicePort,
+				Host:    service.ServiceAddress,
+				Port:    service.ServicePort,
 			}
 
 			nodes = append(nodes, node)

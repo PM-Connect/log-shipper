@@ -15,44 +15,44 @@ type Stats struct {
 	DroppedMessages  uint64
 	ResentMessages   uint64
 
-	bytesProcessedCounter prometheus.Counter
-	messagesInboundCounter prometheus.Counter
+	bytesProcessedCounter   prometheus.Counter
+	messagesInboundCounter  prometheus.Counter
 	messagesOutboundCounter prometheus.Counter
-	droppedMessagesCounter prometheus.Counter
-	resentMessagesCounter prometheus.Counter
-	messagesInFlightGauge prometheus.Gauge
+	droppedMessagesCounter  prometheus.Counter
+	resentMessagesCounter   prometheus.Counter
+	messagesInFlightGauge   prometheus.Gauge
 }
 
 func NewStats(metricPrefix string, labels prometheus.Labels) *Stats {
 	return &Stats{
 		bytesProcessedCounter: promauto.NewCounter(prometheus.CounterOpts{
-			Name: fmt.Sprintf("logshipper_%sbytes_processed", metricPrefix),
-			Help: "The total number of bytes processed.",
+			Name:        fmt.Sprintf("logshipper_%sbytes_processed", metricPrefix),
+			Help:        "The total number of bytes processed.",
 			ConstLabels: labels,
 		}),
 		messagesInboundCounter: promauto.NewCounter(prometheus.CounterOpts{
-			Name: fmt.Sprintf("logshipper_%smessages_inbound", metricPrefix),
-			Help: "The total number of messages received.",
+			Name:        fmt.Sprintf("logshipper_%smessages_inbound", metricPrefix),
+			Help:        "The total number of messages received.",
 			ConstLabels: labels,
 		}),
 		messagesOutboundCounter: promauto.NewCounter(prometheus.CounterOpts{
-			Name: fmt.Sprintf("logshipper_%smessages_outbound", metricPrefix),
-			Help: "The total number of messages sent.",
+			Name:        fmt.Sprintf("logshipper_%smessages_outbound", metricPrefix),
+			Help:        "The total number of messages sent.",
 			ConstLabels: labels,
 		}),
 		droppedMessagesCounter: promauto.NewCounter(prometheus.CounterOpts{
-			Name: fmt.Sprintf("logshipper_%sdropped_messages", metricPrefix),
-			Help: "The total number of messages dropped.",
+			Name:        fmt.Sprintf("logshipper_%sdropped_messages", metricPrefix),
+			Help:        "The total number of messages dropped.",
 			ConstLabels: labels,
 		}),
 		resentMessagesCounter: promauto.NewCounter(prometheus.CounterOpts{
-			Name: fmt.Sprintf("logshipper_%sresent_messages", metricPrefix),
-			Help: "The total number of messages resent/re-queued.",
+			Name:        fmt.Sprintf("logshipper_%sresent_messages", metricPrefix),
+			Help:        "The total number of messages resent/re-queued.",
 			ConstLabels: labels,
 		}),
 		messagesInFlightGauge: promauto.NewGauge(prometheus.GaugeOpts{
-			Name: fmt.Sprintf("logshipper_%smessages_inflight", metricPrefix),
-			Help: "The total number of messages in flight/being processed.",
+			Name:        fmt.Sprintf("logshipper_%smessages_inflight", metricPrefix),
+			Help:        "The total number of messages in flight/being processed.",
 			ConstLabels: labels,
 		}),
 	}

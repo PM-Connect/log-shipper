@@ -21,24 +21,24 @@ import (
 
 // RunCommand contains the config and methods for the Run command.
 type RunCommand struct {
-	Config  string `help:"Specify the path to the config file."`
-	Workers int    `help:"Specify the number of works to run."`
-	Web     bool   `help:"Start the web server. If UI is on, this is forced to true."`
-	Ui      bool   `help:"Start with the ui and api enabled."`
-	Port    int    `help:"The port to run the ui and api on."`
-	Consul  string `help:"The address to consul for clustering."`
+	Config            string `help:"Specify the path to the config file."`
+	Workers           int    `help:"Specify the number of works to run."`
+	Web               bool   `help:"Start the web server. If UI is on, this is forced to true."`
+	Ui                bool   `help:"Start with the ui and api enabled."`
+	Port              int    `help:"The port to run the ui and api on."`
+	Consul            string `help:"The address to consul for clustering."`
 	ConsulServiceName string `help:"The name of the log-shipper service in consul."`
 }
 
 // NewRunCommand created a new instance of the RunCommand ready to use.
 func NewRunCommand() *RunCommand {
 	return &RunCommand{
-		Config:  "./config.yaml",
-		Workers: 1,
-		Web:     true,
-		Ui:      false,
-		Port:    8888,
-		Consul:  "",
+		Config:            "./config.yaml",
+		Workers:           1,
+		Web:               true,
+		Ui:                false,
+		Port:              8888,
+		Consul:            "",
 		ConsulServiceName: "log-shipper",
 	}
 }

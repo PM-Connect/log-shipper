@@ -10,13 +10,13 @@ type AllocationPool struct {
 	sync.RWMutex
 	Allocations []*nomadAPI.Allocation
 
-	AllocationAdded chan *nomadAPI.Allocation
+	AllocationAdded   chan *nomadAPI.Allocation
 	AllocationRemoved chan *nomadAPI.Allocation
 }
 
 func NewAllocationPool() *AllocationPool {
 	return &AllocationPool{
-		AllocationAdded: make(chan *nomadAPI.Allocation),
+		AllocationAdded:   make(chan *nomadAPI.Allocation),
 		AllocationRemoved: make(chan *nomadAPI.Allocation),
 	}
 }
