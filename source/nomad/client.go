@@ -5,6 +5,7 @@ import (
 	consulAPI "github.com/hashicorp/consul/api"
 	nomadAPI "github.com/hashicorp/nomad/api"
 	"github.com/pm-connect/log-shipper/message"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"sync"
 	"time"
@@ -175,6 +176,8 @@ func (c *Client) syncAllocations(pool *AllocationPool) {
 		panic(err)
 	}
 
+	pool.Sync(c.getAllocations())
+
 	ticker := time.NewTicker(duration)
 	for range ticker.C {
 		pool.Sync(c.getAllocations())
@@ -209,11 +212,15 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 		failover = true
 	}
 
+	currentAllocLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, c.Config["node"])
+
 	currentAllocLock := &consulAPI.KVPair{
-		Key:     fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, c.Config["node"]),
+		Key:     currentAllocLockKey,
 		Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 		Session: c.sessionID,
 	}
+
+	log.Info(fmt.Sprintf("[NOMAD] %s Acquiring lock: %s", c.id, currentAllocLockKey))
 
 	acquired, _, err := c.ConsulClient.KV().Acquire(currentAllocLock, nil)
 	if err != nil {
@@ -231,6 +238,8 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 		}
 	}
 
+	log.Info(fmt.Sprintf("[NOMAD] %s Acquired lock: %s", c.id, currentAllocLockKey))
+
 	if failover {
 		otherNodes, _, err := c.NomadClient.Nodes().List(nil)
 		if err != nil {
@@ -242,19 +251,29 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				continue
 			}
 
+			otherNodePrimaryLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, node.ID)
+
 			lock := &consulAPI.KVPair{
-				Key:     fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, node.ID),
+				Key:     otherNodePrimaryLockKey,
 				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 				Session: c.sessionID,
 			}
+
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring lock: %s", c.id, otherNodePrimaryLockKey))
 
 			acquired, _, _ := c.ConsulClient.KV().Acquire(lock, nil)
 
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired lock: %s", c.id, otherNodePrimaryLockKey))
+
+			otherNodeFailoverLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.id, node.ID)
+
 			failoverLock := &consulAPI.KVPair{
-				Key:     fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.id, node.ID),
+				Key:     otherNodeFailoverLockKey,
 				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 				Session: c.sessionID,
 			}
+
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.id, otherNodeFailoverLockKey))
 
 			if acquired {
 				acquiredFailover, _, _ := c.ConsulClient.KV().Acquire(failoverLock, nil)
@@ -263,9 +282,12 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 					nodesToSync = append(nodesToSync, node.ID)
 				}
 
+				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired failover lock: %s", c.id, otherNodeFailoverLockKey))
+
 				_, _, _ = c.ConsulClient.KV().Release(lock, nil)
 			} else {
 				_, _, _ = c.ConsulClient.KV().Release(failoverLock, nil)
+				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquire failover lock aborted, recovery detected: %s", c.id, otherNodeFailoverLockKey))
 			}
 		}
 	}
