@@ -2,16 +2,20 @@ package nomad
 
 import (
 	"fmt"
-	"github.com/pm-connect/log-shipper/message"
+	"strings"
 	"sync"
 	"time"
 
 	consulAPI "github.com/hashicorp/consul/api"
 	nomadAPI "github.com/hashicorp/nomad/api"
+	"github.com/mitchellh/hashstructure"
+	"github.com/pm-connect/log-shipper/message"
 )
 
 type AllocationWorker struct {
 	Stop chan struct{}
+
+	clientId string
 
 	allocation nomadAPI.Allocation
 
@@ -19,11 +23,14 @@ type AllocationWorker struct {
 	consulClient *consulAPI.Client
 
 	waitGroup *sync.WaitGroup
+
+	allocationConfig *AllocationConfig
 }
 
-func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.Client, alloc nomadAPI.Allocation, stop chan struct{}) *AllocationWorker {
+func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.Client, alloc nomadAPI.Allocation, clientId string, stop chan struct{}) *AllocationWorker {
 	return &AllocationWorker{
 		Stop:       stop,
+		clientId: clientId,
 		allocation: alloc,
 		nomadClient: nomadClient,
 		consulClient: consulClient,
@@ -32,11 +39,54 @@ func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.C
 }
 
 func (w *AllocationWorker) Start(receiver chan<- *message.SourceMessage) {
+	gotConfig := w.updateAllocationConfig()
+
+	if !w.allocationConfig.JobConfig.Enabled || !gotConfig {
+		return
+	}
+
+	go w.syncAllocationConfig()
 	go w.watchAllocationEvents(receiver)
+	go w.watchTasks(receiver)
+	go w.watchGroups(receiver)
 }
 
 func (w *AllocationWorker) Wait() {
 	w.waitGroup.Wait()
+}
+
+func (w *AllocationWorker) updateAllocationConfig() bool {
+	alloc, _, err := w.nomadClient.Allocations().Info(w.allocation.ID, nil)
+	if err != nil {
+		return false
+	}
+
+	config := NewFromAllocation(alloc)
+
+	w.allocationConfig = config
+
+	return true
+}
+
+func (w *AllocationWorker) syncAllocationConfig() {
+	ticker := time.NewTicker(5 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			w.updateAllocationConfig()
+		case <-w.Stop:
+			return
+		}
+	}
+}
+
+func (w *AllocationWorker) watchTasks(receiver chan<- *message.SourceMessage) {
+
+}
+
+func (w *AllocationWorker) watchGroups(receiver chan<- *message.SourceMessage) {
+
 }
 
 func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.SourceMessage) {
@@ -45,38 +95,63 @@ func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.Source
 
 	ticker := time.NewTicker(10 * time.Second)
 
-	var syncedMessages []string
-
 	for {
 		select {
 		case <-ticker.C:
-			alloc, _, err := w.nomadClient.Allocations().Info(w.allocation.ID, nil)
-
-			if err != nil {
-				panic(err)
+			gotConfig := w.updateAllocationConfig()
+			if !gotConfig {
+				return
 			}
 
-			for task, state := range alloc.TaskStates {
-				for _, event := range state.Events {
-					messageKey := fmt.Sprintf("%d %s %s %s", event.Time, event.Type, event.DriverMessage, event.DriverError)
+			alloc := w.allocationConfig.Alloc
 
-					if stringInSlice(messageKey, syncedMessages) {
+			for task, state := range alloc.TaskStates {
+				taskKey := fmt.Sprintf("%s/%s/%s", *alloc.Job.Name, alloc.TaskGroup, task)
+				if !w.allocationConfig.TaskConfigs[taskKey].Enabled || !w.allocationConfig.TaskConfigs[taskKey].WatchNomadEvents {
+					continue
+				}
+
+				for _, event := range state.Events {
+					hash, err := hashstructure.Hash(event, nil)
+
+					if err != nil {
+						panic(err)
+					}
+
+					key := fmt.Sprintf("log-shipper/nomad/synced-events/%d", hash)
+
+					existing, _, _ := w.consulClient.KV().Get(key, nil)
+
+					if existing != nil {
 						continue
 					}
 
+					t := time.Unix(0, event.Time)
+
 					log := &message.SourceMessage{
 						Id: *alloc.Job.ID,
-						Message: []byte(fmt.Sprintf("[%s] %s %s", event.Type, event.DriverMessage, event.DriverError)),
+						Message: []byte(strings.TrimSpace(fmt.Sprintf("[%s] %s %s", event.Type, event.DriverMessage, event.DriverError))),
 						Meta: map[string]string{
 							"task": task,
 							"alloc": alloc.ID,
 							"job": *alloc.Job.ID,
+							"group": alloc.TaskGroup,
+							"event_type": event.Type,
+							"driver_message": event.DriverMessage,
+							"driver_error": event.DriverError,
+						},
+						Attributes: &message.Attributes{
+							Type: "nomad_task_events",
+							Timestamp: t.Unix(),
 						},
 					}
 
 					receiver <- log
 
-					syncedMessages = append(syncedMessages, messageKey)
+					_, _ = w.consulClient.KV().Put(&consulAPI.KVPair{
+						Key: key,
+						Value: []byte(""),
+					}, nil)
 				}
 
 			}
@@ -84,14 +159,4 @@ func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.Source
 			return
 		}
 	}
-}
-
-func stringInSlice(str string, slice []string) bool {
-	for _, item := range slice {
-		if item == str {
-			return true
-		}
-	}
-
-	return false
 }

@@ -1,9 +1,13 @@
-package stdout
+package logzio
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
+	"os"
+	"time"
 
+	"github.com/logzio/logzio-go"
 	"github.com/phayes/freeport"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/message"
@@ -11,6 +15,7 @@ import (
 )
 
 type Target struct {
+	Config map[string]string
 }
 
 func (t *Target) Start() (*connection.Details, error) {
@@ -51,6 +56,16 @@ func (t *Target) Start() (*connection.Details, error) {
 
 		go protocol.ReadToChannel(reader, receiveChan, errorChan)
 
+		l, err := logzio.New(
+			t.Config["token"],
+			logzio.SetUrl(t.Config["endpoint"]),
+			logzio.SetDrainDuration(time.Second * 30),
+			logzio.SetTempDirectory("/tmp/log-shipper/logzio"),
+			logzio.SetDrainDiskThreshold(99),
+			logzio.SetCheckDiskSpace(true),
+			logzio.SetDebug(os.Stdout),
+		)
+
 		for {
 			select {
 			case msg := <-receiveChan:
@@ -62,7 +77,30 @@ func (t *Target) Start() (*connection.Details, error) {
 						continue
 					}
 
-					fmt.Printf("Message: \n%+v\n\n", msg)
+					logzioMessage := map[string]interface{}{
+						"message": string(msg.SourceMessage.Message),
+						"type": msg.SourceMessage.Attributes.Type,
+					}
+
+					if msg.SourceMessage.Attributes.Timestamp != int64(0) {
+						logzioMessage["@timestamp"] = time.Unix(msg.SourceMessage.Attributes.Timestamp, 0).Format("2006-01-02T15:04:05.999-0700")
+					}
+
+					for key, value := range msg.SourceMessage.Meta {
+						logzioMessage[key] = value
+					}
+
+					data, err := json.Marshal(logzioMessage)
+
+					if err != nil {
+						panic(err)
+					}
+
+					err = l.Send(data)
+
+					if err != nil {
+						panic(err)
+					}
 
 					protocol.SendOk(conn)
 				case protocol.CommandBye:

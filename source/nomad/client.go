@@ -5,6 +5,7 @@ import (
 	consulAPI "github.com/hashicorp/consul/api"
 	nomadAPI "github.com/hashicorp/nomad/api"
 	"github.com/pm-connect/log-shipper/message"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -14,6 +15,8 @@ type Client struct {
 
 	NomadClient  *nomadAPI.Client
 	ConsulClient *consulAPI.Client
+
+	id string
 
 	sessionID  string
 	sessionTTL string
@@ -25,6 +28,15 @@ type AllocationWorkers struct {
 	sync.Mutex
 	workers map[string]*AllocationWorker
 }
+
+var (
+	httpClient = &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 1 * time.Second,
+		},
+	}
+)
 
 func NewAllocationWorkers() *AllocationWorkers {
 	return &AllocationWorkers{
@@ -62,8 +74,14 @@ func (a *AllocationWorkers) Wait(alloc nomadAPI.Allocation) {
 	a.Unlock()
 }
 
-func NewClient(config map[string]string) (*Client, error) {
-	consulClient, err := NewConsulClient(config["consulAddr"])
+func NewClient(config map[string]string, consulAddr string) (*Client, error) {
+	consulAddress := consulAddr
+
+	if configConsul, ok := config["consulAddr"]; ok && len(configConsul) > 0 {
+		consulAddress = configConsul
+	}
+
+	consulClient, err := NewConsulClient(consulAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +92,18 @@ func NewClient(config map[string]string) (*Client, error) {
 	}
 
 	ttl := "10s"
-	if t, ok := config["ttl"]; ok {
-		ttl = t
+	if x, ok := config["ttl"]; ok {
+		ttl = x
+	}
+
+	id := "unknown"
+	if x, ok := config["id"]; ok {
+		id = x
 	}
 
 	return &Client{
+		id: id,
+
 		Config: config,
 
 		NomadClient:  nomadClient,
@@ -92,6 +117,9 @@ func NewClient(config map[string]string) (*Client, error) {
 
 func NewConsulClient(consulAddr string) (*consulAPI.Client, error) {
 	config := consulAPI.DefaultConfig()
+
+	config.HttpClient = httpClient
+
 	if len(consulAddr) != 0 {
 		config.Address = consulAddr
 	}
@@ -127,7 +155,7 @@ func (c *Client) ReceiveLogs(receiver chan<- *message.SourceMessage) {
 		select {
 		case alloc := <-allocationPool.AllocationAdded:
 			stop := make(chan struct{})
-			worker := NewAllocationWorker(c.NomadClient, c.ConsulClient, *alloc, stop)
+			worker := NewAllocationWorker(c.NomadClient, c.ConsulClient, *alloc, c.id, stop)
 
 			c.allocationWorkers.Add(*alloc, worker)
 
@@ -182,7 +210,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 	}
 
 	currentAllocLock := &consulAPI.KVPair{
-		Key:     fmt.Sprintf("log-shipper/locks/nodes/%s/leader", c.Config["node"]),
+		Key:     fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, c.Config["node"]),
 		Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 		Session: c.sessionID,
 	}
@@ -215,7 +243,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 			}
 
 			lock := &consulAPI.KVPair{
-				Key:     fmt.Sprintf("log-shipper/locks/nodes/%s/leader", node.ID),
+				Key:     fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, node.ID),
 				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 				Session: c.sessionID,
 			}
@@ -223,7 +251,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 			acquired, _, _ := c.ConsulClient.KV().Acquire(lock, nil)
 
 			failoverLock := &consulAPI.KVPair{
-				Key:     fmt.Sprintf("log-shipper/locks/nodes/%s/failover", node.ID),
+				Key:     fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.id, node.ID),
 				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 				Session: c.sessionID,
 			}

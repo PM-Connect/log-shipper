@@ -2,15 +2,16 @@ package nomad
 
 import (
 	"bufio"
-	"fmt"
 	"github.com/phayes/freeport"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
+	"net"
 )
 
 type Source struct {
 	Config map[string]string
+	ConsulAddr string
 }
 
 func (s *Source) Start() (*connection.Details, error) {
@@ -27,56 +28,61 @@ func (s *Source) Start() (*connection.Details, error) {
 	}
 
 	go func() {
-		conn, err := ln.AcceptTCP()
-
-		if err != nil {
-			panic(err)
-		}
-
-		defer conn.Close()
-
-		reader := bufio.NewReader(conn)
-
-		ready := protocol.WaitForHello(reader)
-
-		if !ready {
-			panic(fmt.Errorf("failed to receive HELLO from broker"))
-		}
-
-		nomadClient, err := NewClient(s.Config)
-
-		if err != nil {
-			panic(err)
-		}
-
-		receiver := make(chan *message.SourceMessage)
-
-		defer close(receiver)
-
-		go nomadClient.ReceiveLogs(receiver)
-
-		for log := range receiver {
-
-			fmt.Printf("%+v\n\n", log)
-			continue
-
-			data, err := message.ToProtobuf(log)
-
+		for {
+			conn, err := ln.AcceptTCP()
 			if err != nil {
-				continue
+				panic(err)
 			}
 
-			_, err = protocol.WriteNewMessage(conn, protocol.CommandSourceMessage, string(data))
+			go func(conn net.Conn) {
+				defer conn.Close()
 
-			if err != nil {
-				continue
-			}
+				reader := bufio.NewReader(conn)
 
-			ok := protocol.WaitForOk(reader)
+				ready := protocol.WaitForHello(reader)
+				if !ready {
+					// Received non-hello message.
+					return
+				}
 
-			if !ok {
-				break
-			}
+				nomadClient, err := NewClient(s.Config, s.ConsulAddr)
+				if err != nil {
+					panic(err)
+				}
+
+				receiver := make(chan *message.SourceMessage)
+
+				defer close(receiver)
+
+				go nomadClient.ReceiveLogs(receiver)
+
+				for log := range receiver {
+					data, err := message.ToProtobuf(log)
+					if err != nil {
+						panic(err)
+					}
+
+					msg := &protocol.Message{
+						Command: protocol.CommandSourceMessage,
+						Data: []byte(string(data)),
+					}
+
+					bytes, err := protocol.MessageToProtobuf(msg)
+					if err != nil {
+						panic(err)
+					}
+
+					err = protocol.WriteProtobuf(conn, bytes)
+					if err != nil {
+						panic(err)
+					}
+
+					ok := protocol.WaitForOk(reader)
+					if !ok {
+						break
+					}
+				}
+			}(conn)
 		}
 	}()
 

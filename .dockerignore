@@ -1,0 +1,8 @@
+vendor/
+_docs/
+web/ui/node_modules/
+web/ui/dist/
+web/ui/.env.local
+.env.local
+*.pb.go
+*packr.go

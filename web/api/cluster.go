@@ -42,7 +42,7 @@ func GetNodesRoute(consulAddr string, serviceName string) echo.HandlerFunc {
 			return context.JSON(http.StatusInternalServerError, err)
 		}
 
-		var nodes []Node
+		nodes := []Node{}
 
 		for _, service := range services {
 			node := Node{

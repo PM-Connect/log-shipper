@@ -20,22 +20,18 @@ const CommandBye = "BYE"
 func ReadMessage(reader *bufio.Reader) (*Message, error) {
 	message := &Message{}
 
-	b, err := reader.ReadBytes(' ')
+	sizeBytes := make([]byte, 4)
 
+	_, err := reader.Read(sizeBytes)
 	if err != nil {
 		return message, err
 	}
 
-	if len(b) == 0 {
-		return message, nil
-	}
-
-	size := binary.LittleEndian.Uint64(b[:len(b)-1])
+	size := binary.LittleEndian.Uint32(sizeBytes)
 
 	data := make([]byte, size)
 
 	_, err = reader.Read(data)
-
 	if err != nil {
 		return message, err
 	}
@@ -45,34 +41,42 @@ func ReadMessage(reader *bufio.Reader) (*Message, error) {
 	return message, err
 }
 
-// WriteMessage sends a message to an instance of io.Writer.
-func WriteMessage(conn io.Writer, message *Message) error {
-	var data []byte
-
+func MessageToProtobuf(message *Message) ([]byte, error) {
 	data, err := proto.Marshal(message)
-
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	size := uint64(len(data))
+	return data, nil
+}
+
+func WriteProtobuf(conn io.Writer, data []byte) error {
+	size := uint32(len(data))
 
 	b := []byte("")
 
 	buff := new(bytes.Buffer)
-	err = binary.Write(buff, binary.LittleEndian, size)
-
+	err := binary.Write(buff, binary.LittleEndian, size)
 	if err != nil {
 		return err
 	}
 
 	b = append(b[:], buff.Bytes()[:]...)
-	b = append(b[:], []byte(" ")[:]...)
 	b = append(b[:], data[:]...)
 
 	_, err = conn.Write(b)
 
 	return err
+}
+
+// WriteMessage sends a message to an instance of io.Writer.
+func WriteMessage(conn io.Writer, message *Message) error {
+	data, err := MessageToProtobuf(message)
+	if err != nil {
+		return err
+	}
+
+	return WriteProtobuf(conn, data)
 }
 
 // WriteNewMessage creates a message and sends it to the instance of io.Writer, then returns the created message.

@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/pm-connect/log-shipper/source/nomad"
-	"github.com/pm-connect/log-shipper/web"
 	"io/ioutil"
 	"os"
 	"time"
@@ -15,7 +13,11 @@ import (
 	"github.com/pm-connect/log-shipper/limiter"
 	"github.com/pm-connect/log-shipper/monitoring"
 	"github.com/pm-connect/log-shipper/source/dummy"
+	"github.com/pm-connect/log-shipper/source/nomad"
 	"github.com/pm-connect/log-shipper/target/blackhole"
+	"github.com/pm-connect/log-shipper/target/logzio"
+	"github.com/pm-connect/log-shipper/target/stdout"
+	"github.com/pm-connect/log-shipper/web"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -37,8 +39,8 @@ func NewRunCommand() *RunCommand {
 		Workers:           1,
 		Web:               true,
 		Ui:                false,
-		Port:              8888,
-		Consul:            "",
+		Port:              80,
+		Consul:            "127.0.0.1:8500",
 		ConsulServiceName: "log-shipper",
 	}
 }
@@ -70,6 +72,7 @@ func (c *RunCommand) Run() error {
 		case "nomad":
 			sourceManager.AddConnection(name, &nomad.Source{
 				Config: source.Config,
+				ConsulAddr: c.Consul,
 			})
 		}
 	}
@@ -78,6 +81,12 @@ func (c *RunCommand) Run() error {
 		switch target.Provider {
 		case "blackhole":
 			targetManager.AddConnection(name, &blackhole.Target{})
+		case "stdout":
+			targetManager.AddConnection(name, &stdout.Target{})
+		case "logzio":
+			targetManager.AddConnection(name, &logzio.Target{
+				Config: target.Config,
+			})
 		}
 	}
 

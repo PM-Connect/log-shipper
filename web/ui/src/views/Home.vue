@@ -332,7 +332,7 @@ export default {
   methods: {
     loadData(baseUrl) {
       fetch(`${baseUrl}/nodes`).then(response => response.json()).then((data) => {
-        if (this.nodes.length === 0) {
+        if (data.nodes.length === 0) {
           this.nodes = [];
 
           fetch(`${baseUrl}/workers`).then(response => response.json()).then((data) => {
