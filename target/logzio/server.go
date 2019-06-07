@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/logzio/logzio-go"
@@ -63,7 +62,6 @@ func (t *Target) Start() (*connection.Details, error) {
 			logzio.SetTempDirectory("/tmp/log-shipper/logzio"),
 			logzio.SetDrainDiskThreshold(99),
 			logzio.SetCheckDiskSpace(true),
-			logzio.SetDebug(os.Stdout),
 		)
 
 		for {
