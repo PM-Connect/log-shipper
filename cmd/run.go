@@ -71,7 +71,7 @@ func (c *RunCommand) Run() error {
 			sourceManager.AddConnection(name, &dummy.Source{})
 		case "nomad":
 			sourceManager.AddConnection(name, &nomad.Source{
-				Config: source.Config,
+				Config:     source.Config,
 				ConsulAddr: c.Consul,
 			})
 		}

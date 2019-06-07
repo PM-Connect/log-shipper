@@ -29,7 +29,7 @@ type Target struct {
 	Endpoint      string                `yaml:"endpoint,omitempty" validate:"omitempty,url"`
 	AlertChannels []map[string][]string `yaml:"alert_channels" validate:"required,dive,dive,keys,alphadash,endkeys,dive,alphadash"`
 	RateLimit     []RateLimit           `yaml:"rate_limit" validate:"omitempty,dive"`
-	Config map[string]string `yaml:"config"`
+	Config        map[string]string     `yaml:"config"`
 }
 
 // RateLimit is the config of rate limiting to apply to a target.

@@ -15,8 +15,6 @@ import (
 type AllocationWorker struct {
 	Stop chan struct{}
 
-	clientId string
-
 	allocation nomadAPI.Allocation
 
 	nomadClient  *nomadAPI.Client
@@ -27,14 +25,13 @@ type AllocationWorker struct {
 	allocationConfig *AllocationConfig
 }
 
-func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.Client, alloc nomadAPI.Allocation, clientId string, stop chan struct{}) *AllocationWorker {
+func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.Client, alloc nomadAPI.Allocation, stop chan struct{}) *AllocationWorker {
 	return &AllocationWorker{
-		Stop:       stop,
-		clientId: clientId,
-		allocation: alloc,
-		nomadClient: nomadClient,
+		Stop:         stop,
+		allocation:   alloc,
+		nomadClient:  nomadClient,
 		consulClient: consulClient,
-		waitGroup: &sync.WaitGroup{},
+		waitGroup:    &sync.WaitGroup{},
 	}
 }
 
@@ -129,19 +126,19 @@ func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.Source
 					t := time.Unix(0, event.Time)
 
 					log := &message.SourceMessage{
-						Id: *alloc.Job.ID,
+						Id:      *alloc.Job.ID,
 						Message: []byte(strings.TrimSpace(fmt.Sprintf("[%s] %s %s", event.Type, event.DriverMessage, event.DriverError))),
 						Meta: map[string]string{
-							"task": task,
-							"alloc": alloc.ID,
-							"job": *alloc.Job.ID,
-							"group": alloc.TaskGroup,
-							"event_type": event.Type,
+							"task":           task,
+							"alloc":          alloc.ID,
+							"job":            *alloc.Job.ID,
+							"group":          alloc.TaskGroup,
+							"event_type":     event.Type,
 							"driver_message": event.DriverMessage,
-							"driver_error": event.DriverError,
+							"driver_error":   event.DriverError,
 						},
 						Attributes: &message.Attributes{
-							Type: "nomad_task_events",
+							Type:      "nomad_task_events",
 							Timestamp: t.Unix(),
 						},
 					}
@@ -149,7 +146,7 @@ func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.Source
 					receiver <- log
 
 					_, _ = w.consulClient.KV().Put(&consulAPI.KVPair{
-						Key: key,
+						Key:   key,
 						Value: []byte(""),
 					}, nil)
 				}

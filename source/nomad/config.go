@@ -7,32 +7,32 @@ import (
 )
 
 type AllocationConfig struct {
-	JobConfig *JobConfig
+	JobConfig    *JobConfig
 	GroupConfigs map[string]*GroupConfig
-	TaskConfigs map[string]*TaskConfig
-	Alloc *nomadAPI.Allocation
+	TaskConfigs  map[string]*TaskConfig
+	Alloc        *nomadAPI.Allocation
 }
 
 type JobConfig struct {
-	ID string
+	ID      string
 	Enabled bool
 }
 
 type GroupConfig struct {
-	ID string
+	ID      string
 	Enabled bool
-	Files map[string]*SourceConfig
+	Files   map[string]*SourceConfig
 }
 
 type TaskConfig struct {
-	ID string
-	Enabled bool
-	Outputs map[string]*SourceConfig
+	ID               string
+	Enabled          bool
+	Outputs          map[string]*SourceConfig
 	WatchNomadEvents bool
 }
 
 type SourceConfig struct {
-	Type string
+	Type         string
 	LogDelimiter string
 }
 
@@ -51,10 +51,10 @@ func NewFromAllocation(alloc *nomadAPI.Allocation) *AllocationConfig {
 	jobConfig := metaToJobConfig(alloc.Job.Meta)
 
 	return &AllocationConfig{
-		JobConfig: jobConfig,
+		JobConfig:    jobConfig,
 		GroupConfigs: groupConfigs,
-		TaskConfigs: taskConfigs,
-		Alloc: alloc,
+		TaskConfigs:  taskConfigs,
+		Alloc:        alloc,
 	}
 }
 
@@ -87,7 +87,7 @@ func metaToGroupConfig(meta map[string]string) *GroupConfig {
 
 			fileConfig := &SourceConfig{
 				LogDelimiter: "\n",
-				Type:  "allocation-log-file",
+				Type:         "allocation-log-file",
 			}
 
 			if len(parts) > 1 {
@@ -109,7 +109,7 @@ func metaToGroupConfig(meta map[string]string) *GroupConfig {
 
 func metaToTaskConfig(meta map[string]string) *TaskConfig {
 	config := &TaskConfig{
-		Enabled: true,
+		Enabled:          true,
 		WatchNomadEvents: true,
 	}
 
@@ -145,7 +145,7 @@ func metaToTaskConfig(meta map[string]string) *TaskConfig {
 
 			outputConfig := &SourceConfig{
 				LogDelimiter: "\n",
-				Type:  "allocation-log-file",
+				Type:         "allocation-log-file",
 			}
 
 			if len(parts) > 1 {

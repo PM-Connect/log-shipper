@@ -17,7 +17,8 @@ type Client struct {
 	NomadClient  *nomadAPI.Client
 	ConsulClient *consulAPI.Client
 
-	id string
+	id          string
+	clusterName string
 
 	sessionID  string
 	sessionTTL string
@@ -102,8 +103,14 @@ func NewClient(config map[string]string, consulAddr string) (*Client, error) {
 		id = x
 	}
 
+	name := "unknown"
+	if x, ok := config["name"]; ok {
+		name = x
+	}
+
 	return &Client{
-		id: id,
+		id:          id,
+		clusterName: name,
 
 		Config: config,
 
@@ -156,7 +163,7 @@ func (c *Client) ReceiveLogs(receiver chan<- *message.SourceMessage) {
 		select {
 		case alloc := <-allocationPool.AllocationAdded:
 			stop := make(chan struct{})
-			worker := NewAllocationWorker(c.NomadClient, c.ConsulClient, *alloc, c.id, stop)
+			worker := NewAllocationWorker(c.NomadClient, c.ConsulClient, *alloc, stop)
 
 			c.allocationWorkers.Add(*alloc, worker)
 
@@ -212,7 +219,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 		failover = true
 	}
 
-	currentAllocLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, c.Config["node"])
+	currentAllocLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.clusterName, c.Config["node"])
 
 	currentAllocLock := &consulAPI.KVPair{
 		Key:     currentAllocLockKey,
@@ -220,7 +227,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 		Session: c.sessionID,
 	}
 
-	log.Info(fmt.Sprintf("[NOMAD] %s Acquiring lock: %s", c.id, currentAllocLockKey))
+	log.Info(fmt.Sprintf("[NOMAD] %s Acquiring lock: %s", c.clusterName, currentAllocLockKey))
 
 	acquired, _, err := c.ConsulClient.KV().Acquire(currentAllocLock, nil)
 	if err != nil {
@@ -238,7 +245,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 		}
 	}
 
-	log.Info(fmt.Sprintf("[NOMAD] %s Acquired lock: %s", c.id, currentAllocLockKey))
+	log.Info(fmt.Sprintf("[NOMAD] %s Acquired lock: %s", c.clusterName, currentAllocLockKey))
 
 	if failover {
 		otherNodes, _, err := c.NomadClient.Nodes().List(nil)
@@ -251,7 +258,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				continue
 			}
 
-			otherNodePrimaryLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.id, node.ID)
+			otherNodePrimaryLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.clusterName, node.ID)
 
 			lock := &consulAPI.KVPair{
 				Key:     otherNodePrimaryLockKey,
@@ -259,13 +266,13 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				Session: c.sessionID,
 			}
 
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring lock: %s", c.id, otherNodePrimaryLockKey))
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring lock: %s", c.clusterName, otherNodePrimaryLockKey))
 
 			acquired, _, _ := c.ConsulClient.KV().Acquire(lock, nil)
 
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired lock: %s", c.id, otherNodePrimaryLockKey))
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired lock: %s", c.clusterName, otherNodePrimaryLockKey))
 
-			otherNodeFailoverLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.id, node.ID)
+			otherNodeFailoverLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.clusterName, node.ID)
 
 			failoverLock := &consulAPI.KVPair{
 				Key:     otherNodeFailoverLockKey,
@@ -273,7 +280,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				Session: c.sessionID,
 			}
 
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.id, otherNodeFailoverLockKey))
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
 
 			if acquired {
 				acquiredFailover, _, _ := c.ConsulClient.KV().Acquire(failoverLock, nil)
@@ -282,12 +289,12 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 					nodesToSync = append(nodesToSync, node.ID)
 				}
 
-				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired failover lock: %s", c.id, otherNodeFailoverLockKey))
+				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
 
 				_, _, _ = c.ConsulClient.KV().Release(lock, nil)
 			} else {
 				_, _, _ = c.ConsulClient.KV().Release(failoverLock, nil)
-				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquire failover lock aborted, recovery detected: %s", c.id, otherNodeFailoverLockKey))
+				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquire failover lock aborted, recovery detected: %s", c.clusterName, otherNodeFailoverLockKey))
 			}
 		}
 	}
@@ -308,6 +315,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 
 func (c *Client) createSession() error {
 	session := &consulAPI.SessionEntry{
+		Name:     c.id,
 		TTL:      c.sessionTTL,
 		Behavior: "delete",
 	}
@@ -316,6 +324,8 @@ func (c *Client) createSession() error {
 	if err != nil {
 		return err
 	}
+
+	log.Info(fmt.Sprintf("[NOMAD] Session created: %s", sessionID))
 
 	c.sessionID = sessionID
 

@@ -10,7 +10,7 @@ import (
 )
 
 type Source struct {
-	Config map[string]string
+	Config     map[string]string
 	ConsulAddr string
 }
 
@@ -64,7 +64,7 @@ func (s *Source) Start() (*connection.Details, error) {
 
 					msg := &protocol.Message{
 						Command: protocol.CommandSourceMessage,
-						Data: []byte(string(data)),
+						Data:    []byte(string(data)),
 					}
 
 					bytes, err := protocol.MessageToProtobuf(msg)

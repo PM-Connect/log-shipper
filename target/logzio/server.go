@@ -59,7 +59,7 @@ func (t *Target) Start() (*connection.Details, error) {
 		l, err := logzio.New(
 			t.Config["token"],
 			logzio.SetUrl(t.Config["endpoint"]),
-			logzio.SetDrainDuration(time.Second * 30),
+			logzio.SetDrainDuration(time.Second*30),
 			logzio.SetTempDirectory("/tmp/log-shipper/logzio"),
 			logzio.SetDrainDiskThreshold(99),
 			logzio.SetCheckDiskSpace(true),
@@ -79,7 +79,7 @@ func (t *Target) Start() (*connection.Details, error) {
 
 					logzioMessage := map[string]interface{}{
 						"message": string(msg.SourceMessage.Message),
-						"type": msg.SourceMessage.Attributes.Type,
+						"type":    msg.SourceMessage.Attributes.Type,
 					}
 
 					if msg.SourceMessage.Attributes.Timestamp != int64(0) {
