@@ -176,9 +176,9 @@ func (c *Client) syncAllocations(pool *AllocationPool) {
 		panic(err)
 	}
 
-	pool.Sync(c.getAllocations())
+	tickerDuration := duration / 2
 
-	ticker := time.NewTicker(duration)
+	ticker := time.NewTicker(tickerDuration)
 	for range ticker.C {
 		pool.Sync(c.getAllocations())
 	}
