@@ -2,11 +2,13 @@ package nomad
 
 import (
 	"bufio"
+	"fmt"
 	"github.com/phayes/freeport"
 	"github.com/pm-connect/log-shipper/connection"
 	"github.com/pm-connect/log-shipper/message"
 	"github.com/pm-connect/log-shipper/protocol"
 	"net"
+	log "github.com/sirupsen/logrus"
 )
 
 type Source struct {
@@ -34,6 +36,8 @@ func (s *Source) Start() (*connection.Details, error) {
 				panic(err)
 			}
 
+			log.Info(fmt.Sprintf("[NOMAD] Accepting connection: %s", conn.RemoteAddr()))
+
 			go func(conn net.Conn) {
 				defer conn.Close()
 
@@ -53,6 +57,8 @@ func (s *Source) Start() (*connection.Details, error) {
 				receiver := make(chan *message.SourceMessage)
 
 				defer close(receiver)
+
+				log.Info("[NOMAD] Starting client.")
 
 				go nomadClient.ReceiveLogs(receiver)
 
