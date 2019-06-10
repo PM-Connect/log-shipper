@@ -23,15 +23,18 @@ type AllocationWorker struct {
 	waitGroup *sync.WaitGroup
 
 	allocationConfig *AllocationConfig
+
+	clusterName string
 }
 
-func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.Client, alloc nomadAPI.Allocation, stop chan struct{}) *AllocationWorker {
+func NewAllocationWorker(nomadClient *nomadAPI.Client, consulClient *consulAPI.Client, clusterName string, alloc nomadAPI.Allocation, stop chan struct{}) *AllocationWorker {
 	return &AllocationWorker{
 		Stop:         stop,
 		allocation:   alloc,
 		nomadClient:  nomadClient,
 		consulClient: consulClient,
 		waitGroup:    &sync.WaitGroup{},
+		clusterName: clusterName,
 	}
 }
 
@@ -115,7 +118,7 @@ func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.Source
 						panic(err)
 					}
 
-					key := fmt.Sprintf("log-shipper/nomad/synced-events/%d", hash)
+					key := fmt.Sprintf("log-shipper/nomad/%s/synced-events/allocs/%s/%d", w.clusterName, alloc.ID, hash)
 
 					existing, _, _ := w.consulClient.KV().Get(key, nil)
 

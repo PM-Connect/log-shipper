@@ -163,7 +163,7 @@ func (c *Client) ReceiveLogs(receiver chan<- *message.SourceMessage) {
 		select {
 		case alloc := <-allocationPool.AllocationAdded:
 			stop := make(chan struct{})
-			worker := NewAllocationWorker(c.NomadClient, c.ConsulClient, *alloc, stop)
+			worker := NewAllocationWorker(c.NomadClient, c.ConsulClient, c.clusterName, *alloc, stop)
 
 			c.allocationWorkers.Add(*alloc, worker)
 
@@ -184,6 +184,8 @@ func (c *Client) syncAllocations(pool *AllocationPool) {
 	}
 
 	tickerDuration := duration / 2
+
+	log.Info(fmt.Sprintf("[NOMAD] Syncing allocations every: %s", tickerDuration))
 
 	ticker := time.NewTicker(tickerDuration)
 	for range ticker.C {
@@ -314,6 +316,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 }
 
 func (c *Client) createSession() error {
+	log.Info(fmt.Sprintf("[NOMAD] Creating consul session name: %s, ttl: %s", c.id, c.sessionTTL))
 	session := &consulAPI.SessionEntry{
 		Name:     c.id,
 		TTL:      c.sessionTTL,
@@ -325,7 +328,7 @@ func (c *Client) createSession() error {
 		return err
 	}
 
-	log.Info(fmt.Sprintf("[NOMAD] Session created: %s", sessionID))
+	log.Info(fmt.Sprintf("[NOMAD] Session created, id: %s", sessionID))
 
 	c.sessionID = sessionID
 
