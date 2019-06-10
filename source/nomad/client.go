@@ -261,43 +261,59 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 			}
 
 			otherNodePrimaryLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.clusterName, node.ID)
-
 			lock := &consulAPI.KVPair{
 				Key:     otherNodePrimaryLockKey,
 				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 				Session: c.sessionID,
 			}
 
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring lock: %s", c.clusterName, otherNodePrimaryLockKey))
-
-			acquired, _, _ := c.ConsulClient.KV().Acquire(lock, nil)
-
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired lock: %s", c.clusterName, otherNodePrimaryLockKey))
-
 			otherNodeFailoverLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.clusterName, node.ID)
-
 			failoverLock := &consulAPI.KVPair{
 				Key:     otherNodeFailoverLockKey,
 				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 				Session: c.sessionID,
 			}
 
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
+			existingLock, _, _ := c.ConsulClient.KV().Get(otherNodePrimaryLockKey, nil)
+			existingFailoverLock, _, _ := c.ConsulClient.KV().Get(otherNodeFailoverLockKey, nil)
 
-			if acquired {
-				acquiredFailover, _, _ := c.ConsulClient.KV().Acquire(failoverLock, nil)
-
-				if acquiredFailover {
-					nodesToSync = append(nodesToSync, node.ID)
+			// If the existing master lock is not our own, continue.
+			if existingLock != nil && len(existingLock.Session) > 0 && existingLock.Session != c.sessionID {
+				// If we hold a failover lock, release it.
+				if existingFailoverLock != nil && existingFailoverLock.Session == c.sessionID {
+					_, _, _ = c.ConsulClient.KV().Release(failoverLock, nil)
+					log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Aborting failover, recovery detected: %s", c.clusterName, otherNodeFailoverLockKey))
+					log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Releasing lock: %s", c.clusterName, otherNodeFailoverLockKey))
 				}
-
-				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
-
-				_, _, _ = c.ConsulClient.KV().Release(lock, nil)
-			} else {
-				_, _, _ = c.ConsulClient.KV().Release(failoverLock, nil)
-				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquire failover lock aborted, recovery detected: %s", c.clusterName, otherNodeFailoverLockKey))
+				continue
 			}
+
+			// If existing failover lock exists and is not ours, leave it alone.
+			if existingFailoverLock != nil && existingFailoverLock.Session != c.sessionID {
+				continue
+			}
+
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring lock: %s", c.clusterName, otherNodePrimaryLockKey))
+			acquired, _, _ := c.ConsulClient.KV().Acquire(lock, nil)
+
+			if !acquired {
+				log.Error(fmt.Sprintf("[NOMAD] %s FAILOVER Error acquiring leader lock: %s", c.clusterName, otherNodePrimaryLockKey))
+				continue
+			}
+
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired lock: %s", c.clusterName, otherNodePrimaryLockKey))
+
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
+			acquiredFailover, _, _ := c.ConsulClient.KV().Acquire(failoverLock, nil)
+
+			if acquiredFailover {
+				nodesToSync = append(nodesToSync, node.ID)
+				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
+			}
+
+			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Releasing lock: %s", c.clusterName, otherNodePrimaryLockKey))
+
+			_, _, _ = c.ConsulClient.KV().Release(lock, nil)
 		}
 	}
 

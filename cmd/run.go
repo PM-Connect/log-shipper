@@ -52,8 +52,6 @@ func (c *RunCommand) Run() error {
 		log.Fatalf("error reading config: %s", err)
 	}
 
-	log.SetLevel(log.WarnLevel)
-
 	monitor := monitoring.NewMonitor(log.StandardLogger())
 
 	sourceManager := connection.NewManager()

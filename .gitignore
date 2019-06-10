@@ -3,5 +3,6 @@ cmd.test
 *-packr.go
 consul/
 nomad.yaml
+nomad2.yaml
 *.prof
 dist/
