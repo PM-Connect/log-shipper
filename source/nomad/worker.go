@@ -118,7 +118,7 @@ func (w *AllocationWorker) watchAllocationEvents(receiver chan<- *message.Source
 						panic(err)
 					}
 
-					key := fmt.Sprintf("log-shipper/nomad/%s/synced-events/allocs/%s/%d", w.clusterName, alloc.ID, hash)
+					key := fmt.Sprintf("log-shipper/nomad/synced-events/%s/allocs/%s/%d", w.clusterName, alloc.ID, hash)
 
 					existing, _, _ := w.consulClient.KV().Get(key, nil)
 
