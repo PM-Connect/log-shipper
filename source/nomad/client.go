@@ -222,15 +222,15 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 	}
 
 	currentAllocLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.clusterName, c.Config["node"])
-
 	currentAllocLock := &consulAPI.KVPair{
 		Key:     currentAllocLockKey,
 		Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
 		Session: c.sessionID,
 	}
 
-	log.Info(fmt.Sprintf("[NOMAD] %s Acquiring lock: %s", c.clusterName, currentAllocLockKey))
+	currentAllocFailoverKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.clusterName, c.Config["node"])
 
+	log.Info(fmt.Sprintf("[NOMAD] %s Acquiring lock: %s", c.clusterName, currentAllocLockKey))
 	acquired, _, err := c.ConsulClient.KV().Acquire(currentAllocLock, nil)
 	if err != nil {
 		panic(err)
@@ -249,6 +249,8 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 
 	log.Info(fmt.Sprintf("[NOMAD] %s Acquired lock: %s", c.clusterName, currentAllocLockKey))
 
+	_, _ = c.ConsulClient.KV().Delete(currentAllocFailoverKey, nil)
+
 	if failover {
 		otherNodes, _, err := c.NomadClient.Nodes().List(nil)
 		if err != nil {
@@ -261,11 +263,6 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 			}
 
 			otherNodePrimaryLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/leader", c.clusterName, node.ID)
-			lock := &consulAPI.KVPair{
-				Key:     otherNodePrimaryLockKey,
-				Value:   []byte(fmt.Sprintf("primary node: %s", c.Config["node"])),
-				Session: c.sessionID,
-			}
 
 			otherNodeFailoverLockKey := fmt.Sprintf("log-shipper/nomad/locks/%s/nodes/%s/failover", c.clusterName, node.ID)
 			failoverLock := &consulAPI.KVPair{
@@ -277,11 +274,12 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 			existingLock, _, _ := c.ConsulClient.KV().Get(otherNodePrimaryLockKey, nil)
 			existingFailoverLock, _, _ := c.ConsulClient.KV().Get(otherNodeFailoverLockKey, nil)
 
-			// If the existing master lock is not our own, continue.
-			if existingLock != nil && len(existingLock.Session) > 0 && existingLock.Session != c.sessionID {
+			// If the existing leader lock is not our own, continue.
+			if existingLock != nil && existingLock.Session != c.sessionID {
 				// If we hold a failover lock, release it.
 				if existingFailoverLock != nil && existingFailoverLock.Session == c.sessionID {
 					_, _, _ = c.ConsulClient.KV().Release(failoverLock, nil)
+					_, _ = c.ConsulClient.KV().Delete(otherNodeFailoverLockKey, nil)
 					log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Aborting failover, recovery detected: %s", c.clusterName, otherNodeFailoverLockKey))
 					log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Releasing lock: %s", c.clusterName, otherNodeFailoverLockKey))
 				}
@@ -293,16 +291,6 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				continue
 			}
 
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring lock: %s", c.clusterName, otherNodePrimaryLockKey))
-			acquired, _, _ := c.ConsulClient.KV().Acquire(lock, nil)
-
-			if !acquired {
-				log.Error(fmt.Sprintf("[NOMAD] %s FAILOVER Error acquiring leader lock: %s", c.clusterName, otherNodePrimaryLockKey))
-				continue
-			}
-
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired lock: %s", c.clusterName, otherNodePrimaryLockKey))
-
 			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
 			acquiredFailover, _, _ := c.ConsulClient.KV().Acquire(failoverLock, nil)
 
@@ -310,10 +298,6 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				nodesToSync = append(nodesToSync, node.ID)
 				log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquired failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
 			}
-
-			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Releasing lock: %s", c.clusterName, otherNodePrimaryLockKey))
-
-			_, _, _ = c.ConsulClient.KV().Release(lock, nil)
 		}
 	}
 
