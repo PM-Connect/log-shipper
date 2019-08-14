@@ -5,6 +5,8 @@ import (
 	consulAPI "github.com/hashicorp/consul/api"
 	nomadAPI "github.com/hashicorp/nomad/api"
 	"github.com/pm-connect/log-shipper/message"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/pm-connect/log-shipper/monitoring"
 	log "github.com/sirupsen/logrus"
 	"net/http"
 	"sync"
@@ -247,6 +249,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 		}
 	}
 
+	// TODO: Add metric to track number of primary locks acquired.
 	log.Info(fmt.Sprintf("[NOMAD] %s Acquired lock: %s", c.clusterName, currentAllocLockKey))
 
 	_, _ = c.ConsulClient.KV().Delete(currentAllocFailoverKey, nil)
@@ -280,6 +283,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				if existingFailoverLock != nil && existingFailoverLock.Session == c.sessionID {
 					_, _, _ = c.ConsulClient.KV().Release(failoverLock, nil)
 					_, _ = c.ConsulClient.KV().Delete(otherNodeFailoverLockKey, nil)
+					// TODO: Add metric to track number of failover releases.
 					log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Aborting failover, recovery detected: %s", c.clusterName, otherNodeFailoverLockKey))
 					log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Releasing lock: %s", c.clusterName, otherNodeFailoverLockKey))
 				}
@@ -291,6 +295,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 				continue
 			}
 
+			// TODO: Add metric to track number of failover acquisitions.
 			log.Info(fmt.Sprintf("[NOMAD] %s FAILOVER Acquiring failover lock: %s", c.clusterName, otherNodeFailoverLockKey))
 			acquiredFailover, _, _ := c.ConsulClient.KV().Acquire(failoverLock, nil)
 
@@ -306,6 +311,7 @@ func (c *Client) getAllocations() []*nomadAPI.Allocation {
 	for _, nodeID := range nodesToSync {
 		nodeAllocations, _, err := c.NomadClient.Nodes().Allocations(nodeID, nil)
 		if err != nil {
+			// TODO: Handle this better. Potentially retry. Also add metric to track nomad client communication failures.
 			panic(err)
 		}
 
